@@ -1,0 +1,34 @@
+declare const _default: (() => {
+    nodeEnv: string;
+    port: number;
+    apiPrefix: string;
+    jwtSecret: string;
+    jwtExpiresIn: string;
+    qrSecret: string;
+    locationMaxDistanceMeters: number;
+    reservationMaxHours: number;
+    reservationMinHours: number;
+    qrTimeoutMinutes: number;
+    qrWarningMinutes: number;
+    chainQrTimeoutMinutes: number;
+    lockReleaseDelayMinutes: number;
+    corsOrigins: string[];
+    swaggerEnabled: boolean;
+}) & import("@nestjs/config").ConfigFactoryKeyHost<{
+    nodeEnv: string;
+    port: number;
+    apiPrefix: string;
+    jwtSecret: string;
+    jwtExpiresIn: string;
+    qrSecret: string;
+    locationMaxDistanceMeters: number;
+    reservationMaxHours: number;
+    reservationMinHours: number;
+    qrTimeoutMinutes: number;
+    qrWarningMinutes: number;
+    chainQrTimeoutMinutes: number;
+    lockReleaseDelayMinutes: number;
+    corsOrigins: string[];
+    swaggerEnabled: boolean;
+}>;
+export default _default;
