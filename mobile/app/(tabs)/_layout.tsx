@@ -1,17 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { colors } from '../../constants/theme';
-
-// Badge component
-const TabBarBadge = ({ count }: { count?: number }) => {
-  if (!count) return null;
-  return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{count}</Text>
-    </View>
-  );
-};
 
 export default function TabLayout() {
   return (
@@ -78,11 +68,8 @@ export default function TabLayout() {
           title: 'Rezervasyonlarım',
           headerTitle: 'Rezervasyonlarım',
           tabBarIcon: ({ color, size, focused }) => (
-            <View>
-              <View style={focused ? styles.activeTab : null}>
-                <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
-              </View>
-              <TabBarBadge count={1} />
+            <View style={focused ? styles.activeTab : null}>
+              <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -97,6 +84,14 @@ export default function TabLayout() {
               <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
             </View>
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="reservation-history"
+        options={{
+          href: null, // Butonla acilan sayfa, tab bar'da gorunmesin
+          title: 'Geçmiş Rezervasyonlarım',
+          headerTitle: 'Geçmiş Rezervasyonlarım',
         }}
       />
     </Tabs>
@@ -115,22 +110,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight,
     padding: 8,
     borderRadius: 12,
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    backgroundColor: colors.danger,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    color: colors.white,
-    fontSize: 11,
-    fontWeight: '700',
   },
 });

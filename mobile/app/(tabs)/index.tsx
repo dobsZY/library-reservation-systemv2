@@ -3,67 +3,211 @@ import {
   Text, 
   StyleSheet, 
   ScrollView, 
-  TouchableOpacity, 
+  TouchableOpacity,
+  Pressable,
   RefreshControl,
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert,
+  Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
-import { HallWithOccupancy } from '../../types';
+import { Hall, Reservation } from '../../types';
+import { hallsApi, statisticsApi, OverallStatistics } from '../../api/halls';
+import { reservationsApi } from '../../api/reservations';
+import { handleApiError } from '../../utils/apiError';
+import { onEvent, emitEvent, AppEvents } from '../../utils/events';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState<{
-    totalTables: number;
-    availableTables: number;
-    occupancyRate: number;
-    hallStats: HallWithOccupancy[];
-  } | null>(null);
+  const [stats, setStats] = useState<OverallStatistics | null>(null);
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [hasActiveReservation, setHasActiveReservation] = useState(false);
+  const [activeReservation, setActiveReservation] = useState<Reservation | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [cancelling, setCancelling] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const expiryEmittedRef = useRef<string | null>(null); // Hangi rezervasyon için süre doldu emiti yapıldığını takip et
 
-  const fetchStats = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      // Demo veri
-      setStats({
-        totalTables: 120,
-        availableTables: 45,
-        occupancyRate: 62.5,
-        hallStats: [
-          { id: '1', name: 'A Salonu', floor: 1, totalTables: 40, availableTables: 15, occupancyRate: 62.5, description: 'Sessiz Çalışma Alanı' } as HallWithOccupancy,
-          { id: '2', name: 'B Salonu', floor: 1, totalTables: 40, availableTables: 18, occupancyRate: 55, description: 'Grup Çalışma Alanı' } as HallWithOccupancy,
-          { id: '3', name: 'C Salonu', floor: 2, totalTables: 40, availableTables: 12, occupancyRate: 70, description: 'Bilgisayarlı Alan' } as HallWithOccupancy,
-        ],
-      });
+      const [overall, hallsList, status] = await Promise.all([
+        statisticsApi.getOverallOccupancy(),
+        hallsApi.getAll(),
+        reservationsApi.getStatus().catch(() => null),
+      ]);
+
+      setStats(overall);
+      setHalls(hallsList);
+      setHasActiveReservation(!!status?.hasActiveReservation);
+      setActiveReservation(status?.activeReservation ?? null);
+    } catch (error: any) {
+      if (handleApiError(error)) return;
+      console.warn('Ana sayfa verileri alınamadı:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  // Tab'a her focus olunduğunda veri yenile (stale data önleme)
+  useFocusEffect(
+    useCallback(() => {
+      fetchData();
+    }, [fetchData])
+  );
 
   useEffect(() => {
-    fetchStats();
-    const interval = setInterval(fetchStats, 30000);
-    return () => clearInterval(interval);
-  }, []);
+    // Her 30 saniyede otomatik yenile
+    const interval = setInterval(fetchData, 30000);
+    // Event aboneliği: rezervasyon veya istatistik değişince yenile
+    const unsub1 = onEvent(AppEvents.RESERVATION_CHANGED, fetchData);
+    const unsub2 = onEvent(AppEvents.STATS_CHANGED, fetchData);
+    return () => {
+      clearInterval(interval);
+      unsub1();
+      unsub2();
+    };
+  }, [fetchData]);
+
+  // Kalan süre sayacı
+  useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (!activeReservation) {
+      setTimeRemaining('');
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = new Date();
+      const end = new Date(activeReservation.endTime);
+      const diff = end.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setTimeRemaining('Süre doldu');
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        // Süre dolduğunda sadece bir kez veriyi yenile (sonsuz döngü önleme)
+        if (expiryEmittedRef.current !== activeReservation.id) {
+          expiryEmittedRef.current = activeReservation.id;
+          setTimeout(() => {
+            emitEvent(AppEvents.RESERVATION_CHANGED);
+          }, 3000);
+        }
+        return;
+      }
+
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      setTimeRemaining(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
+    };
+
+    updateTimer();
+    timerRef.current = setInterval(updateTimer, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [activeReservation]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchStats();
-  }, []);
+    fetchData();
+  }, [fetchData]);
 
-  const getStatusColor = (rate: number) => {
-    if (rate < 50) return colors.success;
-    if (rate < 80) return colors.warning;
-    return colors.danger;
+  const doCancelReservation = async () => {
+    if (!activeReservation) return;
+    setCancelling(true);
+    try {
+      await reservationsApi.cancel(activeReservation.id);
+      setHasActiveReservation(false);
+      setActiveReservation(null);
+      emitEvent(AppEvents.RESERVATION_CHANGED);
+      emitEvent(AppEvents.STATS_CHANGED);
+      await fetchData();
+      if (Platform.OS === 'web') {
+        window.alert('Rezervasyonunuz iptal edildi.');
+      } else {
+        Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
+      }
+    } catch (e: any) {
+      if (handleApiError(e)) return;
+      const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Hata', msg);
+      }
+    } finally {
+      setCancelling(false);
+    }
   };
 
-  const getStatusBg = (rate: number) => {
-    if (rate < 50) return colors.successLight;
-    if (rate < 80) return colors.warningLight;
-    return colors.dangerLight;
+  const handleCancelReservation = () => {
+    if (!activeReservation) return;
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Rezervasyonunuzu iptal etmek istediğinize emin misiniz?')) {
+        void doCancelReservation();
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Rezervasyonu İptal Et',
+      'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
+      [
+        { text: 'Hayır', style: 'cancel' },
+        {
+          text: 'Evet, İptal Et',
+          style: 'destructive',
+          onPress: () => void doCancelReservation(),
+        },
+      ],
+    );
+  };
+
+  const handleQrPress = () => {
+    if (activeReservation && activeReservation.status === 'reserved') {
+      router.push('/qr-scan');
+    } else if (activeReservation) {
+      Alert.alert('Bilgi', 'Check-in zaten yapılmış veya uygun değil.');
+    } else {
+      Alert.alert('Bilgi', 'Aktif bir rezervasyonunuz bulunmuyor. Önce rezervasyon yapın.');
+    }
+  };
+
+  const getStatusText = (status: string): string => {
+    switch (status) {
+      case 'reserved': return 'QR Bekleniyor';
+      case 'checked_in': return 'Check-in Yapıldı';
+      case 'completed': return 'Tamamlandı';
+      case 'cancelled': return 'İptal Edildi';
+      case 'expired': return 'Süresi Doldu';
+      case 'no_show': return 'Gelmedi';
+      default: return status;
+    }
+  };
+
+  const getStatusColor = (status: string): string => {
+    switch (status) {
+      case 'reserved': return colors.warning;
+      case 'checked_in': return colors.success;
+      default: return colors.textMuted;
+    }
   };
 
   if (loading) {
@@ -73,6 +217,9 @@ export default function HomeScreen() {
       </View>
     );
   }
+
+  const availableTables = stats?.availableTables ?? 0;
+  const occupancyRate = stats?.overallOccupancyRate ?? 0;
 
   return (
     <ScrollView 
@@ -95,7 +242,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.summaryLabel}>Boş Masa</Text>
             <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
-              {stats?.availableTables || 0}
+              {availableTables}
             </Text>
           </View>
           
@@ -104,7 +251,9 @@ export default function HomeScreen() {
               <Ionicons name="calendar" size={20} color={colors.white} />
             </View>
             <Text style={styles.summaryLabel}>Rezervasyon</Text>
-            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>1</Text>
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
+              {activeReservation ? 1 : 0}
+            </Text>
           </View>
           
           <View style={[styles.summaryCard, { backgroundColor: colors.dangerLight }]}>
@@ -113,24 +262,95 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.summaryLabel}>Doluluk</Text>
             <Text style={[styles.summaryValue, { color: colors.danger }]}>
-              %{Math.round(stats?.occupancyRate || 0)}
+              %{Math.round(occupancyRate)}
             </Text>
           </View>
         </View>
       </View>
 
       {/* Hızlı Rezervasyon */}
-      <TouchableOpacity 
-        style={styles.quickReserveButton}
-        onPress={() => router.push('/halls')}
-        activeOpacity={0.8}
-      >
-        <View style={styles.quickReserveIcon}>
-          <Ionicons name="add-circle" size={24} color={colors.success} />
+      {!activeReservation && (
+        <TouchableOpacity 
+          style={styles.quickReserveButton}
+          onPress={() => router.push('/halls')}
+          activeOpacity={0.8}
+        >
+          <View style={styles.quickReserveIcon}>
+            <Ionicons name="add-circle" size={24} color={colors.success} />
+          </View>
+          <Text style={styles.quickReserveText}>Hızlı Rezervasyon Yap</Text>
+          <Ionicons name="chevron-forward" size={24} color={colors.success} />
+        </TouchableOpacity>
+      )}
+
+      {/* Aktif Rezervasyon Kartı */}
+      {hasActiveReservation && activeReservation && (
+        <View style={styles.activeReservation}>
+          <View style={styles.activeHeader}>
+            <View style={[styles.activeDot, { backgroundColor: getStatusColor(activeReservation.status) }]} />
+            <Text style={[styles.activeLabel, { color: getStatusColor(activeReservation.status) }]}>
+              {activeReservation.status === 'checked_in' ? 'CHECK-IN YAPILDI' : 'ŞU ANDA AKTİF'}
+            </Text>
+          </View>
+          <View style={styles.activeContent}>
+            <View style={styles.activeIconBox}>
+              <Ionicons name="library" size={24} color={colors.success} />
+            </View>
+            <View style={styles.activeInfo}>
+              <Text style={styles.activeTitle}>
+                {activeReservation.table?.hall?.name || activeReservation.hall?.name || 'Salon'} - Masa {activeReservation.table?.tableNumber || '-'}
+              </Text>
+              <Text style={styles.activeSubtitle}>
+                {getStatusText(activeReservation.status)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.activeTimeRow}>
+            <View style={styles.activeTimeItem}>
+              <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+              <Text style={styles.activeTimeText}>
+                {new Date(activeReservation.startTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} - {new Date(activeReservation.endTime).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            </View>
+            {timeRemaining ? (
+              <View style={styles.activeTimeItem}>
+                <Ionicons name="hourglass-outline" size={16} color={colors.warning} />
+                <Text style={[styles.activeTimeText, { color: colors.warning }]}>{timeRemaining}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* QR Check-in butonu */}
+          {activeReservation.status === 'reserved' && (
+            <TouchableOpacity
+              style={styles.qrCheckinButton}
+              onPress={() => router.push('/qr-scan')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="qr-code" size={18} color={colors.primary} />
+              <Text style={styles.qrCheckinText}>QR ile Giriş Yap</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+
+          <Pressable
+            style={styles.activeButton}
+            onPress={handleCancelReservation}
+            disabled={cancelling}
+            hitSlop={12}
+            android_ripple={{ color: 'rgba(220,38,38,0.10)' }}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <>
+                <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
+                <Text style={styles.activeButtonText}>Rezervasyonu İptal Et</Text>
+              </>
+            )}
+          </Pressable>
         </View>
-        <Text style={styles.quickReserveText}>Hızlı Rezervasyon Yap</Text>
-        <Ionicons name="chevron-forward" size={24} color={colors.success} />
-      </TouchableOpacity>
+      )}
 
       {/* Salonlar */}
       <View style={styles.hallsSection}>
@@ -148,87 +368,52 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {stats?.hallStats.map((hall) => (
-          <TouchableOpacity 
-            key={hall.id}
-            style={styles.hallCard}
-            onPress={() => router.push(`/hall/${hall.id}`)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.hallInfo}>
-              <View style={styles.hallIconContainer}>
-                <Ionicons name="library" size={24} color={colors.textSecondary} />
+        {halls.map((hall) => {
+          // İstatistiklerde bu salona ait bilgiyi bul
+          const hallOcc = stats?.hallsOccupancy?.find(h => h.hallId === hall.id);
+          return (
+            <TouchableOpacity 
+              key={hall.id}
+              style={styles.hallCard}
+              onPress={() => router.push(`/hall/${hall.id}`)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.hallInfo}>
+                <View style={styles.hallIconContainer}>
+                  <Ionicons name="library" size={24} color={colors.textSecondary} />
+                </View>
+                <View style={styles.hallDetails}>
+                  <Text style={styles.hallName}>{hall.name}</Text>
+                  {hall.description ? (
+                    <Text style={styles.hallDescription}>{hall.description}</Text>
+                  ) : null}
+                  <Text style={styles.hallFloor}>{hall.floor}. Kat</Text>
+                </View>
               </View>
-              <View style={styles.hallDetails}>
-                <Text style={styles.hallName}>{hall.name}</Text>
-                <Text style={styles.hallDescription}>{hall.description}</Text>
-                <Text style={styles.hallFloor}>{hall.floor}. Kat</Text>
-              </View>
-            </View>
-            
-            <View style={styles.hallStats}>
-              <View style={[
-                styles.occupancyBadge, 
-                { backgroundColor: getStatusBg(hall.occupancyRate) }
-              ]}>
-                <Text style={[styles.occupancyText, { color: getStatusColor(hall.occupancyRate) }]}>
-                  %{Math.round(hall.occupancyRate)}
-                </Text>
-              </View>
-              <Text style={styles.availableText}>
-                {hall.availableTables} / {hall.totalTables} boş
-              </Text>
-            </View>
-            
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* QR Kod Tara */}
-      <TouchableOpacity 
-        style={styles.qrButton}
-        onPress={() => router.push('/qr-scan')}
-        activeOpacity={0.7}
-      >
-        <View style={styles.qrIconContainer}>
-          <Ionicons name="qr-code" size={32} color={colors.primary} />
-        </View>
-        <View style={styles.qrTextContainer}>
-          <Text style={styles.qrTitle}>QR Kod Tara</Text>
-          <Text style={styles.qrSubtitle}>Masanıza giriş yapın</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Aktif Rezervasyon Kartı */}
-      <View style={styles.activeReservation}>
-        <View style={styles.activeHeader}>
-          <View style={styles.activeDot} />
-          <Text style={styles.activeLabel}>ŞU ANDA AKTİF</Text>
-        </View>
-        <View style={styles.activeContent}>
-          <View style={styles.activeIconBox}>
-            <Ionicons name="library" size={24} color={colors.success} />
-          </View>
-          <View style={styles.activeInfo}>
-            <Text style={styles.activeTitle}>A Salonu - Masa 15</Text>
-            <Text style={styles.activeSubtitle}>Sessiz Çalışma Alanı</Text>
-          </View>
-        </View>
-        <View style={styles.activeTimeRow}>
-          <View style={styles.activeTimeItem}>
-            <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.activeTimeText}>14:00 - 17:00</Text>
-          </View>
-          <View style={styles.activeTimeItem}>
-            <Ionicons name="hourglass-outline" size={16} color={colors.warning} />
-            <Text style={[styles.activeTimeText, { color: colors.warning }]}>1:45:30 kaldı</Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.activeButton}>
-          <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
-          <Text style={styles.activeButtonText}>Rezervasyonu İptal Et</Text>
-        </TouchableOpacity>
+              
+              {hallOcc ? (
+                <View style={styles.hallStats}>
+                  <View style={[
+                    styles.occupancyBadge,
+                    { backgroundColor: hallOcc.occupancyRate < 50 ? colors.successLight : hallOcc.occupancyRate < 80 ? colors.warningLight : colors.dangerLight }
+                  ]}>
+                    <Text style={[
+                      styles.occupancyText,
+                      { color: hallOcc.occupancyRate < 50 ? colors.success : hallOcc.occupancyRate < 80 ? colors.warning : colors.danger }
+                    ]}>
+                      %{Math.round(hallOcc.occupancyRate)}
+                    </Text>
+                  </View>
+                  <Text style={styles.availableText}>
+                    {hallOcc.availableTables}/{hallOcc.totalTables} boş
+                  </Text>
+                </View>
+              ) : null}
+              
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View style={{ height: 30 }} />
@@ -440,7 +625,7 @@ const styles = StyleSheet.create({
   activeReservation: {
     backgroundColor: colors.white,
     marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
     borderWidth: 2,
@@ -457,12 +642,10 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.success,
   },
   activeLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.success,
   },
   activeContent: {
     flexDirection: 'row',
@@ -509,6 +692,23 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
+  qrCheckinButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  qrCheckinText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
   activeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -524,4 +724,3 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
 });
-
