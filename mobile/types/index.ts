@@ -40,57 +40,40 @@ export interface Table {
   hall?: Hall;
 }
 
-// Reservation Types
-export type ReservationStatus = 
-  | 'pending'
-  | 'confirmed'
+// Reservation Types (backend ile uyumlu)
+export type ReservationStatus =
+  | 'reserved'
   | 'checked_in'
   | 'completed'
   | 'cancelled'
+  | 'expired'
   | 'no_show';
 
 export interface Reservation {
   id: string;
   userId: string;
   tableId: string;
-  reservationDate: string;
+  hallId: string;
   startTime: string;
   endTime: string;
-  durationHours: number;
   status: ReservationStatus;
-  qrCheckedAt?: string;
-  checkInLatitude?: number;
-  checkInLongitude?: number;
-  checkInDistanceMeters?: number;
-  warningNotificationSentAt?: string;
-  reminderNotificationSentAt?: string;
+  checkedInAt?: string;
+  cancelledAt?: string;
+  cancelledReason?: string;
+  qrDeadline?: string;
   createdAt: string;
   updatedAt: string;
   table?: Table;
+  hall?: Hall;
 }
 
-// API Response Types
-export interface HallWithOccupancy extends Hall {
-  tables?: Table[];
-  totalTables: number;
-  availableTables: number;
-  occupancyRate: number;
-}
-
-export interface TableWithStatus extends Table {
-  currentStatus: 'available' | 'occupied' | 'reserved' | 'locked';
-  currentReservation?: Reservation;
-  nextAvailableTime?: string;
-}
-
+// API Request/Response Types
 export interface CreateReservationDto {
   tableId: string;
   startTime: string;
-  durationHours: number;
 }
 
 export interface CheckInDto {
-  reservationId: string;
   qrCode: string;
   latitude: number;
   longitude: number;
@@ -98,20 +81,63 @@ export interface CheckInDto {
 
 export interface UserReservationStatus {
   canReserve: boolean;
+  hasActiveReservation: boolean;
   activeReservation?: Reservation | null;
   reason?: string;
-  isInRenewalWindow?: boolean;
-  remainingMinutes?: number;
+  canExtend?: boolean;
+  extensionsRemaining?: number;
+  todayReservationCount?: number;
+  operatingHours?: {
+    opening: string;
+    closing: string;
+    is24h: boolean;
+  };
 }
 
-// Statistics
-export interface SystemStatistics {
-  totalHalls: number;
-  totalTables: number;
-  availableTables: number;
-  occupiedTables: number;
-  reservedTables: number;
-  overallOccupancyRate: number;
-  hallStats: HallWithOccupancy[];
+// Hall Availability (GET /halls/:id/availability response)
+export interface TableAvailabilityItem {
+  table: Table;
+  isAvailable: boolean;
+  currentLock?: {
+    id: string;
+    lockStart: string;
+    lockEnd: string;
+    status: string;
+  };
+  availableFrom?: string;
+}
+
+export interface HallAvailabilityResponse {
+  hall: Hall;
+  tables: TableAvailabilityItem[];
+  statistics: {
+    total: number;
+    available: number;
+    occupied: number;
+    occupancyRate: number;
+  };
+}
+
+// Hall Slots (GET /halls/:id/slots response)
+export interface TableSlotItem {
+  startTime: string;
+  endTime: string;
+  isAvailable: boolean;
+  blockedUntil?: string;
+}
+
+export interface TableSlotsData {
+  tableId: string;
+  tableNumber: string;
+  features: Array<{ id: string; name: string; icon: string }>;
+  slots: TableSlotItem[];
+}
+
+export interface HallSlotsResponse {
+  hallId: string;
+  hallName: string;
+  date: string;
+  operatingHours: { opening: string; closing: string; is24h: boolean };
+  tables: TableSlotsData[];
 }
 
