@@ -24,8 +24,20 @@ export default registerAs('app', () => ({
   lockReleaseDelayMinutes: parseInt(process.env.LOCK_RELEASE_DELAY_MINUTES || '5', 10),
   
   // CORS
-  corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'],
-  
+  //corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'],
+   
+  // CORS
+  corsOrigins: process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map((origin) => origin.trim())
+    : [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://localhost:8081',
+        'http://localhost:8082',
+        'http://127.0.0.1:8081',
+        'http://127.0.0.1:8082',
+      ],
+
   // Swagger
   swaggerEnabled: process.env.SWAGGER_ENABLED !== 'false',
 }));
