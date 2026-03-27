@@ -2,26 +2,46 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
+import { onEvent, AppEvents } from '../utils/events';
+import { handleApiError } from '../utils/apiError';
 
-// Bildirim ayarları
+/** Web dahil tüm platformlarda açılışın `app/index.tsx` üzerinden yapılmasını zorunlu kılar. */
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
-  }),
+    shouldShowBanner: true,
+    shouldShowList: true,
+  } as Notifications.NotificationBehavior),
 });
 
 export default function RootLayout() {
   useEffect(() => {
-    // Bildirim izni iste
-    const requestPermissions = async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('Bildirim izni verilmedi');
+    const init = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.log('Bildirim izni verilmedi');
+        }
+      } catch (e) {
+        console.log('Bildirim izni hatası', e);
       }
     };
-    requestPermissions();
+
+    init();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onEvent(AppEvents.UNAUTHORIZED, () => {
+      handleApiError({ message: 'Oturum süreniz sona erdi', status: 401 });
+    });
+
+    return () => unsub();
   }, []);
 
   return (
@@ -29,33 +49,25 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack
         screenOptions={{
-          headerStyle: {
-            backgroundColor: '#1e3a5f',
-          },
+          headerStyle: { backgroundColor: '#1e3a5f' },
           headerTintColor: '#fff',
-          headerTitleStyle: {
-            fontWeight: 'bold',
-          },
+          headerTitleStyle: { fontWeight: 'bold' },
         }}
       >
-        <Stack.Screen 
-          name="(tabs)" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="hall/[id]" 
-          options={{ 
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ title: 'Giriş', headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="hall/[id]"
+          options={{
             title: 'Salon Detayı',
-            presentation: 'card',
-          }} 
-        />
-        <Stack.Screen 
-          name="qr-scan" 
-          options={{ 
-            title: 'QR Kod Tara',
+            // "card" iOS'ta kenarlardan boşluk/border-radius ile görünebiliyor.
+            // Tam ekrana oturması için modal kullanıyoruz.
             presentation: 'modal',
-          }} 
+          }}
         />
+        <Stack.Screen name="qr-scan" options={{ title: 'QR Kod Tara', presentation: 'modal' }} />
       </Stack>
     </>
   );

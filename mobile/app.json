@@ -52,7 +52,8 @@
           "locationWhenInUsePermission": "Masanıza yakın olduğunuzu doğrulamak için konum erişimi gereklidir."
         }
       ],
-      "expo-router"
+      "expo-router",
+      "@react-native-community/datetimepicker"
     ]
   }
 }

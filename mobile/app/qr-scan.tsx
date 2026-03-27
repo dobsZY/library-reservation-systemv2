@@ -12,8 +12,9 @@ import { Camera, CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { reservationsApi } from '../api/reservations';
-
-const DEMO_USER_ID = 'user-001';
+import { handleApiError } from '../utils/apiError';
+import { emitEvent, AppEvents } from '../utils/events';
+import { colors } from '../constants/theme';
 
 export default function QRScanScreen() {
   const router = useRouter();
@@ -45,11 +46,14 @@ export default function QRScanScreen() {
 
       // Check-in yap
       await reservationsApi.checkIn({
-        reservationId: 'demo-res-001', // Gerçek uygulamada aktif rezervasyondan alınır
         qrCode: data,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
       });
+
+      // Diğer ekranları güncelle
+      emitEvent(AppEvents.RESERVATION_CHANGED);
+      emitEvent(AppEvents.STATS_CHANGED);
 
       Alert.alert(
         'Başarılı! ✓',
@@ -57,22 +61,23 @@ export default function QRScanScreen() {
         [
           { 
             text: 'Tamam', 
-            onPress: () => router.replace('/reservation')
+            onPress: () => router.replace('/(tabs)/reservation')
           }
         ]
       );
     } catch (error: any) {
-      // Demo başarılı göster
-      Alert.alert(
-        'Başarılı! ✓',
-        'Masanıza giriş yapıldı. İyi çalışmalar!',
-        [
-          { 
-            text: 'Tamam', 
-            onPress: () => router.replace('/reservation')
-          }
-        ]
-      );
+      if (handleApiError(error)) {
+        return;
+      }
+      const message = error?.message || 'Check-in sırasında bir hata oluştu.';
+      Alert.alert('Hata', message, [
+        {
+          text: 'Tamam',
+          onPress: () => {
+            setScanned(false);
+          },
+        },
+      ]);
     } finally {
       setScanning(false);
     }
@@ -82,7 +87,7 @@ export default function QRScanScreen() {
   if (!permission) {
     return (
       <View style={styles.permissionContainer}>
-        <ActivityIndicator size="large" color="#1e3a5f" />
+        <ActivityIndicator size="large" color={colors.textPrimary} />
       </View>
     );
   }
@@ -91,7 +96,7 @@ export default function QRScanScreen() {
     return (
       <View style={styles.permissionContainer}>
         <View style={styles.permissionIcon}>
-          <Ionicons name="camera-outline" size={64} color="#1e3a5f" />
+          <Ionicons name="camera-outline" size={64} color={colors.textPrimary} />
         </View>
         <Text style={styles.permissionTitle}>Kamera İzni Gerekli</Text>
         <Text style={styles.permissionText}>
@@ -108,7 +113,7 @@ export default function QRScanScreen() {
     return (
       <View style={styles.permissionContainer}>
         <View style={styles.permissionIcon}>
-          <Ionicons name="location-outline" size={64} color="#1e3a5f" />
+          <Ionicons name="location-outline" size={64} color={colors.textPrimary} />
         </View>
         <Text style={styles.permissionTitle}>Konum İzni Gerekli</Text>
         <Text style={styles.permissionText}>
@@ -154,7 +159,7 @@ export default function QRScanScreen() {
               <View style={[styles.corner, styles.cornerBR]} />
               
               {scanning && (
-                <ActivityIndicator size="large" color="#22c55e" />
+                <ActivityIndicator size="large" color={colors.success} />
               )}
             </View>
             <View style={styles.overlaySide} />
@@ -163,7 +168,7 @@ export default function QRScanScreen() {
           {/* Bottom */}
           <View style={styles.overlayBottom}>
             <View style={styles.infoCard}>
-              <Ionicons name="information-circle" size={24} color="#1e3a5f" />
+              <Ionicons name="information-circle" size={24} color={colors.textPrimary} />
               <Text style={styles.infoText}>
                 Masanızdan en fazla 50 metre uzaklıkta olmalısınız.
               </Text>
@@ -235,7 +240,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 40,
     height: 40,
-    borderColor: '#22c55e',
+    borderColor: colors.success,
     borderWidth: 4,
   },
   cornerTL: {
@@ -292,7 +297,7 @@ const styles = StyleSheet.create({
   rescanButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1e3a5f',
+    backgroundColor: colors.textPrimary,
     paddingVertical: 14,
     paddingHorizontal: 30,
     borderRadius: 25,
@@ -311,7 +316,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -319,7 +324,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f7fa',
+    backgroundColor: colors.background,
     padding: 30,
   },
   permissionIcon: {
@@ -328,24 +333,24 @@ const styles = StyleSheet.create({
   permissionTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#1e3a5f',
+    color: colors.textPrimary,
     marginBottom: 10,
   },
   permissionText: {
     fontSize: 15,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 30,
   },
   permissionButton: {
-    backgroundColor: '#1e3a5f',
+    backgroundColor: colors.textPrimary,
     paddingVertical: 16,
     paddingHorizontal: 40,
     borderRadius: 30,
   },
   permissionButtonText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 17,
     fontWeight: '600',
   },

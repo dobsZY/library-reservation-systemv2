@@ -120,7 +120,7 @@ export default function ReservationScreen() {
     .filter((r) => r.status !== 'reserved' && r.status !== 'checked_in')
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
-  const pastReservationsPreview = pastReservations.slice(0, 4);
+  const pastReservationsPreview = pastReservations.slice(0, 3);
 
   const fetchReservation = useCallback(async () => {
     let status: any = null;
@@ -372,9 +372,18 @@ export default function ReservationScreen() {
         <View style={styles.historySection}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/reservation-history')}>
-                  <Text style={styles.historyAllLink}>Tümünü Gör</Text>
+          {pastReservations.length > 3 && (
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: '/(tabs)/reservation-history',
+                  params: { showAll: '1' },
+                })
+              }
+            >
+              <Text style={styles.historyAllLink}>Tümünü Gör</Text>
             </TouchableOpacity>
+          )}
           </View>
 
           {pastReservationsPreview.length === 0 ? (
@@ -402,7 +411,7 @@ export default function ReservationScreen() {
                   ]}
                 >
                   <Text style={[styles.historyPreviewBadgeText, { color: getHistoryStatusColor(res.status) }]}>
-                    {getHistoryStatusText(res.status).toUpperCase()}
+                  {getHistoryStatusText(res.status).toLocaleUpperCase('tr-TR')}
                   </Text>
                 </View>
               </View>
@@ -632,9 +641,18 @@ export default function ReservationScreen() {
 
         <View style={styles.historyHeader}>
           <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/reservation-history')}>
+          {pastReservations.length > 3 && (
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/(tabs)/reservation-history',
+                params: { showAll: '1' },
+              })
+            }
+          >
             <Text style={styles.historyAllLink}>Tümünü Gör</Text>
           </TouchableOpacity>
+          )}
         </View>
 
         {pastReservationsPreview.length === 0 ? (
@@ -654,9 +672,14 @@ export default function ReservationScreen() {
                   <Text style={styles.historyReason}>İptal nedeni: {res.cancelledReason}</Text>
                 )}
               </View>
-              <View style={[styles.historyPreviewBadge, { backgroundColor: getHistoryStatusColor(res.status) + '20' }]}>
+              <View
+                style={[
+                  styles.historyPreviewBadge,
+                  { backgroundColor: getHistoryStatusColor(res.status) + '20' },
+                ]}
+              >
                 <Text style={[styles.historyPreviewBadgeText, { color: getHistoryStatusColor(res.status) }]}>
-                  {getHistoryStatusText(res.status).toUpperCase()}
+                  {getHistoryStatusText(res.status).toLocaleUpperCase('tr-TR')}
                 </Text>
               </View>
             </View>
