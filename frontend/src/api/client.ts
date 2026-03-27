@@ -1,43 +1,68 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
+const API_BASE_URL = '/api/v1';
+const TOKEN_KEY = 'auth_token';
+const USER_KEY = 'auth_user';
 
-// Test user ID (gerçek uygulamada auth'dan gelecek)
-const TEST_USER_ID = '2024123456'; // Örnek öğrenci no
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
 
-export const apiClient = axios.create({
+export function setToken(token: string | null): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: { id: string; studentNumber: string; fullName: string; role: string } | null): void {
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_KEY);
+}
+
+export function clearAuth(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-    'x-user-id': TEST_USER_ID,
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor
-apiClient.interceptors.request.use(
-  (config) => {
-    // Kullanıcı ID'sini her istekte ekle
-    const userId = localStorage.getItem('userId') || TEST_USER_ID;
-    config.headers['x-user-id'] = userId;
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+apiClient.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
-// Response interceptor
 apiClient.interceptors.response.use(
-  (response) => response,
+  (res) => res,
   (error) => {
-    if (error.response) {
-      // API hata mesajını düzenle
-      const message = error.response.data?.message || 'Bir hata oluştu';
-      console.error('API Error:', message);
+    if (error.response?.status === 401) {
+      const url = error.config?.url || '';
+      if (!url.includes('/auth/login')) {
+        clearAuth();
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
+        }
+      }
     }
-    return Promise.reject(error);
-  }
+    const msg = error.response?.data?.message;
+    const message = Array.isArray(msg) ? msg.join(' ') : msg || error.message;
+    const err = new Error(message);
+    (err as any).status = error.response?.status;
+    return Promise.reject(err);
+  },
 );
 
 export default apiClient;
-
