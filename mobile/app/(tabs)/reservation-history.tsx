@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
-import { SingleDatePicker, SingleDatePickerHandle } from '../../components/SingleDatePicker';
+import { SingleDatePicker } from '../../components/SingleDatePicker';
 
 function getStatusText(status: string): string {
   switch (status) {
@@ -58,8 +58,10 @@ export default function ReservationHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<Reservation[]>([]);
 
-  const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD — rezervasyon günü
-  const datePickerRef = useRef<SingleDatePickerHandle>(null);
+  /** Takvimde seçilen tarih; liste ancak "Filtrele" ile uygulanır. */
+  const [pendingDate, setPendingDate] = useState<string>('');
+  /** Uygulanan filtre; boşsa tüm geçmiş rezervasyonlar. */
+  const [appliedFilterDate, setAppliedFilterDate] = useState<string>('');
   const params = useLocalSearchParams<{ showAll?: string }>();
   const showAllParamValue = Array.isArray((params as any)?.showAll)
     ? ((params as any)?.showAll?.[0] as string | undefined)
@@ -96,9 +98,9 @@ export default function ReservationHistoryScreen() {
   }, [history]);
 
   const filtered = useMemo(() => {
-    if (!filterDate) return pastReservations;
-    return pastReservations.filter((r) => ymdLocal(new Date(r.startTime)) === filterDate);
-  }, [pastReservations, filterDate]);
+    if (!appliedFilterDate) return pastReservations;
+    return pastReservations.filter((r) => ymdLocal(new Date(r.startTime)) === appliedFilterDate);
+  }, [pastReservations, appliedFilterDate]);
 
   const displayed = useMemo(() => {
     if (showAll) return filtered;
@@ -107,8 +109,17 @@ export default function ReservationHistoryScreen() {
 
   const showAllBtnVisible = !showAll && filtered.length > 3;
 
+  const applyFilter = () => {
+    if (!pendingDate.trim()) {
+      Alert.alert('Uyarı', 'Lütfen önce bir tarih seçin.');
+      return;
+    }
+    setAppliedFilterDate(pendingDate);
+  };
+
   const resetFilters = () => {
-    setFilterDate('');
+    setPendingDate('');
+    setAppliedFilterDate('');
   };
 
   const renderItem = ({ item }: { item: Reservation }) => {
@@ -156,18 +167,14 @@ export default function ReservationHistoryScreen() {
         <Text style={styles.filterTitle}>Tarih Filtreleme</Text>
 
         <SingleDatePicker
-          ref={datePickerRef}
           label="Rezervasyon tarihi"
-          value={filterDate}
-          onChange={setFilterDate}
+          value={pendingDate}
+          onChange={setPendingDate}
           placeholder="Tarih Seçiniz"
         />
 
         <View style={styles.filterActions}>
-          <TouchableOpacity
-            style={styles.applyBtn}
-            onPress={() => datePickerRef.current?.open()}
-          >
+          <TouchableOpacity style={styles.applyBtn} onPress={applyFilter}>
             <Text style={styles.applyBtnText}>Filtrele</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.clearBtn} onPress={resetFilters}>
@@ -184,9 +191,9 @@ export default function ReservationHistoryScreen() {
         <View style={styles.empty}>
           <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
           <Text style={styles.emptyText}>
-            {filterDate
-              ? 'Bu tarihte rezervasyon bulunamadı.'
-              : 'Henüz geçmiş rezervasyon bulunmuyor.'}
+            {pastReservations.length === 0
+              ? 'Henüz geçmiş rezervasyon bulunmuyor.'
+              : 'Seçilen tarihe ait rezervasyon kaydı bulunmamaktadır'}
           </Text>
         </View>
       ) : (
