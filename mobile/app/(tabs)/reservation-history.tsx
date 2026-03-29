@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform, ScrollView } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
+import { SingleDatePicker, SingleDatePickerHandle } from '../../components/SingleDatePicker';
 
 function getStatusText(status: string): string {
   switch (status) {
@@ -57,8 +58,8 @@ export default function ReservationHistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<Reservation[]>([]);
 
-  const [fromDate, setFromDate] = useState<string>(''); // YYYY-MM-DD
-  const [toDate, setToDate] = useState<string>(''); // YYYY-MM-DD
+  const [filterDate, setFilterDate] = useState<string>(''); // YYYY-MM-DD — rezervasyon günü
+  const datePickerRef = useRef<SingleDatePickerHandle>(null);
   const params = useLocalSearchParams<{ showAll?: string }>();
   const showAllParamValue = Array.isArray((params as any)?.showAll)
     ? ((params as any)?.showAll?.[0] as string | undefined)
@@ -95,17 +96,9 @@ export default function ReservationHistoryScreen() {
   }, [history]);
 
   const filtered = useMemo(() => {
-    if (!fromDate && !toDate) return pastReservations;
-
-    return pastReservations.filter((r) => {
-      const d = new Date(r.startTime);
-      const ymd = ymdLocal(d);
-
-      if (fromDate && ymd < fromDate) return false;
-      if (toDate && ymd > toDate) return false;
-      return true;
-    });
-  }, [pastReservations, fromDate, toDate]);
+    if (!filterDate) return pastReservations;
+    return pastReservations.filter((r) => ymdLocal(new Date(r.startTime)) === filterDate);
+  }, [pastReservations, filterDate]);
 
   const displayed = useMemo(() => {
     if (showAll) return filtered;
@@ -115,10 +108,7 @@ export default function ReservationHistoryScreen() {
   const showAllBtnVisible = !showAll && filtered.length > 3;
 
   const resetFilters = () => {
-    setFromDate('');
-    setToDate('');
-    // "Tümünü Gör" modundayken filtreleme yine de tüm kayıtları etkilemeli.
-    // Bu yüzden showAll durumunu sıfırlamıyoruz.
+    setFilterDate('');
   };
 
   const renderItem = ({ item }: { item: Reservation }) => {
@@ -165,27 +155,19 @@ export default function ReservationHistoryScreen() {
         <View style={styles.filterCard}>
         <Text style={styles.filterTitle}>Tarih Filtreleme</Text>
 
-        <View style={styles.filterRow}>
-          <TextInput
-            style={styles.input}
-            value={fromDate}
-            onChangeText={setFromDate}
-            placeholder="Başlangıç (YYYY-MM-DD)"
-            autoCapitalize="none"
-            keyboardType="default"
-          />
-          <TextInput
-            style={styles.input}
-            value={toDate}
-            onChangeText={setToDate}
-            placeholder="Bitiş (YYYY-MM-DD)"
-            autoCapitalize="none"
-            keyboardType="default"
-          />
-        </View>
+        <SingleDatePicker
+          ref={datePickerRef}
+          label="Rezervasyon tarihi"
+          value={filterDate}
+          onChange={setFilterDate}
+          placeholder="Tarih Seçiniz"
+        />
 
         <View style={styles.filterActions}>
-          <TouchableOpacity style={styles.applyBtn} onPress={() => {}}>
+          <TouchableOpacity
+            style={styles.applyBtn}
+            onPress={() => datePickerRef.current?.open()}
+          >
             <Text style={styles.applyBtnText}>Filtrele</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.clearBtn} onPress={resetFilters}>
@@ -201,7 +183,11 @@ export default function ReservationHistoryScreen() {
       {filtered.length === 0 ? (
         <View style={styles.empty}>
           <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.emptyText}>Bu tarihte rezervasyon bulunamadı.</Text>
+          <Text style={styles.emptyText}>
+            {filterDate
+              ? 'Bu tarihte rezervasyon bulunamadı.'
+              : 'Henüz geçmiş rezervasyon bulunmuyor.'}
+          </Text>
         </View>
       ) : (
         <>
@@ -246,18 +232,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
   filterTitle: { fontSize: 14, fontWeight: '600', color: colors.textPrimary, marginBottom: spacing.md },
-  filterRow: { flexDirection: 'row', gap: spacing.sm },
-  input: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.sm,
-    fontSize: 13,
-    color: colors.textPrimary,
-  },
   filterActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
   applyBtn: {
     flex: 1,
