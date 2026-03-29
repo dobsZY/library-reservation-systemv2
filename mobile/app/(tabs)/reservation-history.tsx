@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 import { SingleDatePicker } from '../../components/SingleDatePicker';
 
@@ -81,7 +82,7 @@ export default function ReservationHistoryScreen() {
       setHistory(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Geçmiş yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'Geçmiş yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -111,7 +112,7 @@ export default function ReservationHistoryScreen() {
 
   const applyFilter = () => {
     if (!pendingDate.trim()) {
-      Alert.alert('Uyarı', 'Lütfen önce bir tarih seçin.');
+      showAppDialog('Uyarı', 'Lütfen önce bir tarih seçin.');
       return;
     }
     setAppliedFilterDate(pendingDate);

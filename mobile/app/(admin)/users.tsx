@@ -7,13 +7,12 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminUser } from '../../api/admin';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -27,7 +26,7 @@ export default function AdminUsersScreen() {
       setUsers(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Kullanıcılar yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'Kullanıcılar yüklenemedi.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -47,14 +46,14 @@ export default function AdminUsersScreen() {
     setActionLoading(user.id);
     try {
       await adminApi.forceLogout(user.id);
-      Alert.alert(
+      showAppDialog(
         'Başarılı',
         `${user.fullName} için sunucudaki oturumlar kapatıldı. Kullanıcı bir sonraki işlemde oturumunun düştüğünü görecek.`,
       );
       await fetchUsers();
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'İşlem başarısız.');
+      showAppDialog('Hata', e?.message || 'İşlem başarısız.');
     } finally {
       setActionLoading(null);
     }
@@ -63,21 +62,19 @@ export default function AdminUsersScreen() {
   const handleForceLogout = (user: AdminUser) => {
     const msg = `${user.fullName} (${user.studentNumber}) kullanıcısının tüm oturumları sonlandırılacak. Devam edilsin mi?`;
 
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm(msg)) {
-        void performForceLogout(user);
-      }
-      return;
-    }
-
-    Alert.alert('Oturumu Sonlandır', msg, [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sonlandır',
-        style: 'destructive',
-        onPress: () => void performForceLogout(user),
-      },
-    ]);
+    showAppDialog(
+      'Oturumu Sonlandır',
+      msg,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sonlandır',
+          style: 'destructive',
+          onPress: () => void performForceLogout(user),
+        },
+      ],
+      'warning',
+    );
   };
 
   const renderUser = ({ item }: { item: AdminUser }) => (

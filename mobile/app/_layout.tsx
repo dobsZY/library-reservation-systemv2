@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { onEvent, AppEvents } from '../utils/events';
 import { handleApiError } from '../utils/apiError';
+import AppDialogHost from '../components/AppDialogHost';
 
 /** Web dahil tüm platformlarda açılışın `app/index.tsx` üzerinden yapılmasını zorunlu kılar. */
 export const unstable_settings = {
@@ -46,6 +47,7 @@ export default function RootLayout() {
 
   return (
     <>
+      <AppDialogHost />
       <StatusBar style="light" />
       <Stack
         screenOptions={{

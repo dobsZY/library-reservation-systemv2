@@ -7,8 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -16,6 +14,7 @@ import { adminApi, AdminOverview } from '../../api/admin';
 import { logout } from '../../api/auth';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 
 export default function AdminHomeScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -28,7 +27,7 @@ export default function AdminHomeScreen() {
       setOverview(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'İstatistikler yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'İstatistikler yüklenemedi.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -58,23 +57,21 @@ export default function AdminHomeScreen() {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Oturumu kapatmak istediğinize emin misiniz?')) {
-        void performLogout();
-      }
-      return;
-    }
-
-    Alert.alert('Çıkış', 'Oturumu kapatmak istediğinize emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Çıkış Yap',
-        style: 'destructive',
-        onPress: () => {
-          void performLogout();
+    showAppDialog(
+      'Çıkış',
+      'Oturumu kapatmak istediğinize emin misiniz?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Çıkış Yap',
+          style: 'destructive',
+          onPress: () => {
+            void performLogout();
+          },
         },
-      },
-    ]);
+      ],
+      'warning',
+    );
   };
 
   if (loading) {

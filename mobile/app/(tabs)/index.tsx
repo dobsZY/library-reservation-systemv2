@@ -7,8 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -18,6 +16,7 @@ import { Hall, Reservation } from '../../types';
 import { hallsApi, statisticsApi, OverallStatistics } from '../../api/halls';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, emitEvent, AppEvents } from '../../utils/events';
 
 export default function HomeScreen() {
@@ -138,19 +137,11 @@ export default function HomeScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchData();
-      if (Platform.OS === 'web') {
-        window.alert('Rezervasyonunuz iptal edildi.');
-      } else {
-        Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
-      }
+      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Hata', msg);
-      }
+      showAppDialog('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -159,14 +150,7 @@ export default function HomeScreen() {
   const handleCancelReservation = () => {
     if (!activeReservation) return;
 
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Rezervasyonunuzu iptal etmek istediğinize emin misiniz?')) {
-        void doCancelReservation();
-      }
-      return;
-    }
-
-    Alert.alert(
+    showAppDialog(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -177,6 +161,7 @@ export default function HomeScreen() {
           onPress: () => void doCancelReservation(),
         },
       ],
+      'warning',
     );
   };
 
@@ -184,9 +169,9 @@ export default function HomeScreen() {
     if (activeReservation && activeReservation.status === 'reserved') {
       router.push('/qr-scan');
     } else if (activeReservation) {
-      Alert.alert('Bilgi', 'Check-in zaten yapılmış veya uygun değil.');
+      showAppDialog('Bilgi', 'Check-in zaten yapılmış veya uygun değil.');
     } else {
-      Alert.alert('Bilgi', 'Aktif bir rezervasyonunuz bulunmuyor. Önce rezervasyon yapın.');
+      showAppDialog('Bilgi', 'Aktif bir rezervasyonunuz bulunmuyor. Önce rezervasyon yapın.');
     }
   };
 

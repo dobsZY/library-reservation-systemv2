@@ -3,7 +3,6 @@ import {
   Text, 
   StyleSheet, 
   TouchableOpacity,
-  Alert,
   ActivityIndicator 
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -13,6 +12,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { reservationsApi } from '../api/reservations';
 import { handleApiError } from '../utils/apiError';
+import { showAppDialog } from '../utils/appDialogController';
 import { emitEvent, AppEvents } from '../utils/events';
 import { colors } from '../constants/theme';
 
@@ -55,7 +55,7 @@ export default function QRScanScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
 
-      Alert.alert(
+      showAppDialog(
         'Başarılı! ✓',
         'Masanıza giriş yapıldı. İyi çalışmalar!',
         [
@@ -63,14 +63,15 @@ export default function QRScanScreen() {
             text: 'Tamam', 
             onPress: () => router.replace('/(tabs)/reservation')
           }
-        ]
+        ],
+        'success',
       );
     } catch (error: any) {
       if (handleApiError(error)) {
         return;
       }
       const message = error?.message || 'Check-in sırasında bir hata oluştu.';
-      Alert.alert('Hata', message, [
+      showAppDialog('Hata', message, [
         {
           text: 'Tamam',
           onPress: () => {

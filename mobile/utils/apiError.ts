@@ -1,6 +1,6 @@
-import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { ApiError } from '../api/client';
+import { showAppDialog } from './appDialogController';
 
 /**
  * Re-entrance guard: eş zamanlı birden fazla 401 yanıtında
@@ -30,7 +30,7 @@ export function handleApiError(error: any): boolean {
   }
   isHandling = true;
 
-  Alert.alert(
+  showAppDialog(
     'Oturum Süresi Doldu',
     'Oturum süreniz sona erdi. Lütfen tekrar giriş yapın.',
     [
@@ -43,7 +43,8 @@ export function handleApiError(error: any): boolean {
           setTimeout(() => { isHandling = false; }, 1000);
         },
       },
-    ]
+    ],
+    'danger',
   );
 
   return true;

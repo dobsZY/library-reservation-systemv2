@@ -7,8 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -17,6 +15,7 @@ import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, emitEvent, AppEvents } from '../../utils/events';
 
 interface UserStats {
@@ -132,7 +131,7 @@ export default function ReservationScreen() {
       if (handleApiError(error)) return;
       // 404 veya boş değil, gerçek hata
       if (error?.status !== 404) {
-        Alert.alert('Hata', error?.message || 'Rezervasyon bilgileri alınamadı.');
+        showAppDialog('Hata', error?.message || 'Rezervasyon bilgileri alınamadı.');
       }
       setHasActiveReservation(false);
       setActiveReservation(null);
@@ -237,19 +236,11 @@ export default function ReservationScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchReservation();
-      if (Platform.OS === 'web') {
-        window.alert('Rezervasyonunuz iptal edildi.');
-      } else {
-        Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
-      }
+      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Hata', msg);
-      }
+      showAppDialog('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -258,14 +249,7 @@ export default function ReservationScreen() {
   const handleCancel = () => {
     if (!activeReservation) return;
 
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Rezervasyonunuzu iptal etmek istediğinize emin misiniz?')) {
-        void doCancelReservation();
-      }
-      return;
-    }
-
-    Alert.alert(
+    showAppDialog(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -276,6 +260,7 @@ export default function ReservationScreen() {
           onPress: () => void doCancelReservation(),
         },
       ],
+      'warning',
     );
   };
 
@@ -326,24 +311,26 @@ export default function ReservationScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }
       >
-        <View style={styles.emptyIcon}>
-          <Ionicons name="calendar-outline" size={80} color={colors.textMuted} />
+        <View style={styles.emptyHero}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="calendar-outline" size={80} color={colors.textMuted} />
+          </View>
+          <Text style={styles.emptyTitle}>Aktif Rezervasyon Yok</Text>
+          <Text style={styles.emptySubtitle}>
+            Henüz aktif bir rezervasyonunuz bulunmuyor.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => router.push('/halls')}
+          >
+            <Ionicons name="add-circle" size={20} color={colors.white} />
+            <Text style={styles.createButtonText}>Rezervasyon Yap</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.emptyTitle}>Aktif Rezervasyon Yok</Text>
-        <Text style={styles.emptySubtitle}>
-          Henüz aktif bir rezervasyonunuz bulunmuyor.
-        </Text>
 
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => router.push('/halls')}
-        >
-          <Ionicons name="add-circle" size={20} color={colors.white} />
-          <Text style={styles.createButtonText}>Rezervasyon Yap</Text>
-        </TouchableOpacity>
-
-        {/* İstatistikler + Geçmiş (Hesabım yerine Rezervasyonlarım) */}
-        <View style={styles.statsSection}>
+        {/* İstatistikler + Geçmiş — üstteki padding ile aynı hizada, tam genişlik */}
+        <View style={[styles.statsSection, styles.emptyMainSection]}>
           <View style={styles.sectionHeader}>
             <Ionicons name="bar-chart" size={18} color={colors.textSecondary} />
             <Text style={styles.sectionLabel}>Kütüphane İstatistiklerim</Text>
@@ -369,11 +356,14 @@ export default function ReservationScreen() {
           </View>
         </View>
 
-        <View style={styles.historySection}>
+        <View style={[styles.historySection, styles.emptyMainSection]}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
+            <Text style={styles.historyTitle} numberOfLines={1} ellipsizeMode="tail">
+              Geçmiş Rezervasyonlarım
+            </Text>
           {pastReservations.length > 3 && (
             <TouchableOpacity
+              style={styles.historyAllLinkWrap}
               onPress={() =>
                 router.push({
                   pathname: '/(tabs)/reservation-history',
@@ -391,8 +381,8 @@ export default function ReservationScreen() {
           ) : (
             pastReservationsPreview.map((res) => (
               <View key={res.id} style={styles.historyPreviewItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.historyPreviewTop}>
+                <View style={styles.historyPreviewTextCol}>
+                  <Text style={styles.historyPreviewTop} numberOfLines={2} ellipsizeMode="tail">
                     {res.table?.hall?.name || res.hall?.name || 'Salon'} · Masa {res.table?.tableNumber || '-'}
                   </Text>
                   <Text style={styles.historyPreviewTime}>
@@ -564,7 +554,7 @@ export default function ReservationScreen() {
             style={[styles.actionButton, styles.extendButton]}
             onPress={() => {
               if (!activeReservation) return;
-              Alert.alert(
+              showAppDialog(
                 'Süre Uzat',
                 'Rezervasyonunuzu 1 saat uzatmak istediğinize emin misiniz?',
                 [
@@ -574,17 +564,18 @@ export default function ReservationScreen() {
                     onPress: async () => {
                       try {
                         await reservationsApi.extend(activeReservation.id);
-                        Alert.alert('Başarılı', 'Rezervasyonunuz 1 saat uzatıldı.');
+                        showAppDialog('Başarılı', 'Rezervasyonunuz 1 saat uzatıldı.');
                         fetchReservation();
                         emitEvent(AppEvents.RESERVATION_CHANGED);
                         emitEvent(AppEvents.STATS_CHANGED);
                       } catch (e: any) {
                         if (handleApiError(e)) return;
-                        Alert.alert('Hata', e?.message || 'Uzatma yapılamadı.');
+                        showAppDialog('Hata', e?.message || 'Uzatma yapılamadı.');
                       }
                     }
                   }
-                ]
+                ],
+                'warning',
               );
             }}
           >
@@ -640,9 +631,12 @@ export default function ReservationScreen() {
         <View style={{ height: spacing.md }} />
 
         <View style={styles.historyHeader}>
-          <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
+          <Text style={styles.historyTitle} numberOfLines={1} ellipsizeMode="tail">
+            Geçmiş Rezervasyonlarım
+          </Text>
           {pastReservations.length > 3 && (
           <TouchableOpacity
+            style={styles.historyAllLinkWrap}
             onPress={() =>
               router.push({
                 pathname: '/(tabs)/reservation-history',
@@ -660,8 +654,8 @@ export default function ReservationScreen() {
         ) : (
           pastReservationsPreview.map((res) => (
             <View key={res.id} style={styles.historyPreviewItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.historyPreviewTop}>
+              <View style={styles.historyPreviewTextCol}>
+                <Text style={styles.historyPreviewTop} numberOfLines={2} ellipsizeMode="tail">
                   {res.table?.hall?.name || res.hall?.name || 'Salon'} · Masa {res.table?.tableNumber || '-'}
                 </Text>
                 <Text style={styles.historyPreviewTime}>
@@ -705,11 +699,20 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
+  },
+  emptyHero: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  /** Boş rezervasyon ekranında istatistik + geçmiş, ScrollView içinde tam genişlik (Kütüphane İstatistikleri ile aynı hat) */
+  emptyMainSection: {
+    alignSelf: 'stretch',
+    width: '100%',
   },
   emptyIcon: {
     marginBottom: 20,
@@ -1007,15 +1010,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
+    width: '100%',
   },
   statCard: {
-    flexBasis: '47%',
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: '46%',
+    maxWidth: '100%',
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
@@ -1038,6 +1047,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   historyHeader: {
     flexDirection: 'row',
@@ -1047,19 +1058,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   historyTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
   },
-  historyAllLink: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
+  historyAllLinkWrap: {
+    flexShrink: 0,
     borderWidth: 1,
     borderColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
+  },
+  historyAllLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
     textAlign: 'center',
   },
   historyEmpty: {
@@ -1069,6 +1085,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   historyPreviewItem: {
+    alignSelf: 'stretch',
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
@@ -1078,6 +1095,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
+    width: '100%',
+  },
+  historyPreviewTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   historyPreviewTop: {
     fontSize: 13,
@@ -1095,6 +1117,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   historyPreviewBadge: {
+    flexShrink: 0,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,

@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
-  Platform,
   InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +16,7 @@ import { verifySession, logout } from '../../api/auth';
 import { reservationsApi } from '../../api/reservations';
 import { Reservation, ReservationStatus } from '../../types';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, AppEvents } from '../../utils/events';
 
 interface UserStats {
@@ -161,23 +160,21 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Hesabınızdan çıkmak istediğinize emin misiniz?')) {
-        void performLogout();
-      }
-      return;
-    }
-
-    Alert.alert('Çıkış Yap', 'Hesabınızdan çıkmak istediğinize emin misiniz?', [
-      { text: 'Hayır', style: 'cancel' },
-      {
-        text: 'Evet, Çıkış Yap',
-        style: 'destructive',
-        onPress: () => {
-          void performLogout();
+    showAppDialog(
+      'Çıkış Yap',
+      'Hesabınızdan çıkmak istediğinize emin misiniz?',
+      [
+        { text: 'Hayır', style: 'cancel' },
+        {
+          text: 'Evet, Çıkış Yap',
+          style: 'destructive',
+          onPress: () => {
+            void performLogout();
+          },
         },
-      },
-    ]);
+      ],
+      'warning',
+    );
   };
 
   // Geçmiş rezervasyonlar: aktif olmayan (reserved/checked_in olmayan) en yeniden eskiye sıralı, ilk 20 adet

@@ -7,7 +7,6 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   TextInput,
   Modal,
   ScrollView,
@@ -18,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminHall, AdminTable } from '../../api/admin';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 
 export default function AdminHallsScreen() {
   const [halls, setHalls] = useState<AdminHall[]>([]);
@@ -38,7 +38,7 @@ export default function AdminHallsScreen() {
       setHalls(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Salonlar yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'Salonlar yüklenemedi.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -62,7 +62,7 @@ export default function AdminHallsScreen() {
       setTables(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Masalar yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'Masalar yüklenemedi.');
     } finally {
       setTablesLoading(false);
     }
@@ -88,12 +88,12 @@ export default function AdminHallsScreen() {
         width: parseFloat(editForm.width) || 50,
         height: parseFloat(editForm.height) || 50,
       });
-      Alert.alert('Başarılı', 'Masa güncellendi.');
+      showAppDialog('Başarılı', 'Masa güncellendi.');
       setEditingTable(null);
       if (selectedHall) selectHall(selectedHall);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Güncelleme başarısız.');
+      showAppDialog('Hata', e?.message || 'Güncelleme başarısız.');
     } finally {
       setSaving(false);
     }

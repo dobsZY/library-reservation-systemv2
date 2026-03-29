@@ -7,14 +7,13 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
-  Platform,
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminReservation } from '../../api/admin';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 
 const FILTERS = [
   { key: '', label: 'Tümü' },
@@ -54,7 +53,7 @@ export default function AdminReservationsScreen() {
       setReservations(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
-      Alert.alert('Hata', e?.message || 'Rezervasyonlar yüklenemedi.');
+      showAppDialog('Hata', e?.message || 'Rezervasyonlar yüklenemedi.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -76,7 +75,7 @@ export default function AdminReservationsScreen() {
       res.status === 'reserved' || res.status === 'checked_in';
 
     if (!isActive) {
-      Alert.alert('Bilgi', 'Bu rezervasyon iptal edilemez.');
+      showAppDialog('Bilgi', 'Bu rezervasyon iptal edilemez.');
       return;
     }
 
@@ -86,39 +85,29 @@ export default function AdminReservationsScreen() {
       setCancelLoading(res.id);
       try {
         await adminApi.cancelReservation(res.id);
-        if (Platform.OS === 'web') {
-          window.alert('Rezervasyon iptal edildi.');
-        } else {
-          Alert.alert('Başarılı', 'Rezervasyon iptal edildi.');
-        }
+        showAppDialog('Başarılı', 'Rezervasyon iptal edildi.');
         fetchReservations();
       } catch (e: any) {
         if (handleApiError(e)) return;
-        if (Platform.OS === 'web') {
-          window.alert(e?.message || 'İşlem başarısız.');
-        } else {
-          Alert.alert('Hata', e?.message || 'İşlem başarısız.');
-        }
+        showAppDialog('Hata', e?.message || 'İşlem başarısız.');
       } finally {
         setCancelLoading(null);
       }
     };
 
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm(message)) {
-        void doCancel();
-      }
-      return;
-    }
-
-    Alert.alert('Rezervasyonu İptal Et', message, [
-      { text: 'Vazgeç', style: 'cancel' },
-      {
-        text: 'İptal Et',
-        style: 'destructive',
-        onPress: () => void doCancel(),
-      },
-    ]);
+    showAppDialog(
+      'Rezervasyonu İptal Et',
+      message,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'İptal Et',
+          style: 'destructive',
+          onPress: () => void doCancel(),
+        },
+      ],
+      'warning',
+    );
   };
 
   const renderItem = ({ item }: { item: AdminReservation }) => {
