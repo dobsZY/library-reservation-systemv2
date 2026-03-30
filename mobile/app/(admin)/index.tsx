@@ -16,6 +16,15 @@ import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
+type AdminCard = {
+  key: string;
+  title: string;
+  value: number | string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  route: string;
+};
+
 export default function AdminHomeScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,13 +91,40 @@ export default function AdminHomeScreen() {
     );
   }
 
-  const cards = overview
+  const cards: AdminCard[] = overview
     ? [
-        { title: 'Toplam Kullanıcı', value: overview.totalUsers, icon: 'people' as const, color: '#3B82F6' },
-        { title: 'Toplam Rezervasyon', value: overview.totalReservations, icon: 'calendar' as const, color: '#8B5CF6' },
-        { title: 'Aktif Rezervasyon', value: overview.activeReservations, icon: 'time' as const, color: '#22C55E' },
-        { title: 'Süresi Dolmuş', value: overview.noShowCount, icon: 'alert-circle' as const, color: '#EF4444' },
-        { title: 'Doluluk Oranı', value: `%${overview.occupancyRate.toFixed(1)}`, icon: 'bar-chart' as const, color: '#F59E0B' },
+        {
+          key: 'users',
+          title: 'Toplam Kullanıcı',
+          value: overview.totalUsers,
+          icon: 'people',
+          color: '#3B82F6',
+          route: '/(admin)/users',
+        },
+        {
+          key: 'reservations-active',
+          title: 'Aktif Rezervasyon',
+          value: overview.activeReservations,
+          icon: 'time',
+          color: '#22C55E',
+          route: '/(admin)/reservations?filter=active',
+        },
+        {
+          key: 'reservations-expired',
+          title: 'Süresi Dolmuş',
+          value: overview.noShowCount,
+          icon: 'alert-circle',
+          color: '#EF4444',
+          route: '/(admin)/reservations?filter=expired',
+        },
+        {
+          key: 'occupancy',
+          title: 'Doluluk Oranı',
+          value: `%${overview.occupancyRate.toFixed(1)}`,
+          icon: 'bar-chart',
+          color: '#F59E0B',
+          route: '/(admin)/halls',
+        },
       ]
     : [];
 
@@ -106,14 +142,19 @@ export default function AdminHomeScreen() {
       </View>
 
       <View style={styles.grid}>
-        {cards.map((c, i) => (
-          <View key={i} style={styles.card}>
+        {cards.map((c) => (
+          <TouchableOpacity
+            key={c.key}
+            style={styles.card}
+            activeOpacity={0.8}
+            onPress={() => router.push(c.route as any)}
+          >
             <View style={[styles.iconCircle, { backgroundColor: c.color + '20' }]}>
               <Ionicons name={c.icon} size={24} color={c.color} />
             </View>
             <Text style={styles.cardValue}>{c.value}</Text>
             <Text style={styles.cardTitle}>{c.title}</Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     </ScrollView>

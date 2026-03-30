@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,16 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
-  ScrollView,
+  TextInput,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { adminApi, AdminReservation } from '../../api/admin';
 import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
+import { SingleDatePicker } from '../../components/SingleDatePicker';
 
 const FILTERS = [
   { key: '', label: 'Tümü' },
@@ -41,11 +44,24 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminReservationsScreen() {
+  const { filter: routeFilter } = useLocalSearchParams<{ filter?: string }>();
   const [reservations, setReservations] = useState<AdminReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('');
   const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+  const [studentNumberQuery, setStudentNumberQuery] = useState('');
+  const [fullNameQuery, setFullNameQuery] = useState('');
+  const [dateQuery, setDateQuery] = useState('');
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof routeFilter !== 'string') return;
+    const isValidFilter = FILTERS.some((f) => f.key === routeFilter);
+    if (isValidFilter) {
+      setFilter(routeFilter);
+    }
+  }, [routeFilter]);
 
   const fetchReservations = useCallback(async () => {
     try {
@@ -68,6 +84,31 @@ export default function AdminReservationsScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchReservations();
+  };
+
+  const filteredReservations = useMemo(() => {
+    const studentNumber = studentNumberQuery.trim().toLowerCase();
+    const fullName = fullNameQuery.trim().toLocaleLowerCase('tr-TR');
+    const dateText = dateQuery.trim().toLowerCase();
+
+    return reservations.filter((item) => {
+      const itemStudentNumber = (item.user?.studentNumber || '').toLowerCase();
+      const itemFullName = (item.user?.fullName || '').toLocaleLowerCase('tr-TR');
+      const formattedDate = formatDate(item.startTime).toLowerCase();
+      const isoDate = item.startTime ? item.startTime.slice(0, 10).toLowerCase() : '';
+
+      const studentOk = !studentNumber || itemStudentNumber.includes(studentNumber);
+      const fullNameOk = !fullName || itemFullName.includes(fullName);
+      const dateOk = !dateText || formattedDate.includes(dateText) || isoDate.includes(dateText);
+
+      return studentOk && fullNameOk && dateOk;
+    });
+  }, [dateQuery, fullNameQuery, reservations, studentNumberQuery]);
+
+  const clearSearchFilters = () => {
+    setStudentNumberQuery('');
+    setFullNameQuery('');
+    setDateQuery('');
   };
 
   const handleCancel = (res: AdminReservation) => {
@@ -167,17 +208,28 @@ export default function AdminReservationsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={styles.filterContent}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f.key}
-            style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
-            onPress={() => setFilter(f.key)}
-          >
-            <Text style={[styles.filterLabel, filter === f.key && styles.filterLabelActive]}>{f.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <View style={styles.filterBar}>
+        <FlatList
+          horizontal
+          data={FILTERS}
+          keyExtractor={(f) => f.key}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterContent}
+          renderItem={({ item: f }) => (
+            <TouchableOpacity
+              style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
+              onPress={() => setFilter(f.key)}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.filterLabel, filter === f.key && styles.filterLabelActive]}
+              >
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
 
       {loading ? (
         <View style={styles.centered}>
@@ -185,7 +237,7 @@ export default function AdminReservationsScreen() {
         </View>
       ) : (
         <FlatList
-          data={reservations}
+          data={filteredReservations}
           keyExtractor={(r) => r.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
@@ -198,25 +250,237 @@ export default function AdminReservationsScreen() {
           }
         />
       )}
+
+      <TouchableOpacity
+        style={styles.searchFab}
+        activeOpacity={0.85}
+        onPress={() => setIsSearchModalOpen(true)}
+      >
+        <Ionicons name="search" size={22} color={colors.white} />
+      </TouchableOpacity>
+
+      <Modal
+        visible={isSearchModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsSearchModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsSearchModalOpen(false)}
+          />
+          <View style={styles.searchModalCard}>
+            <View style={styles.searchModalHeader}>
+              <Text style={styles.searchModalTitle}>Filtreleme / Arama</Text>
+              <TouchableOpacity onPress={() => setIsSearchModalOpen(false)}>
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              value={studentNumberQuery}
+              onChangeText={setStudentNumberQuery}
+              placeholder="Öğrenci no ile ara"
+              placeholderTextColor={colors.textMuted}
+              style={styles.searchInput}
+            />
+            <TextInput
+              value={fullNameQuery}
+              onChangeText={setFullNameQuery}
+              placeholder="Ad soyad ile ara"
+              placeholderTextColor={colors.textMuted}
+              style={styles.searchInput}
+            />
+            <SingleDatePicker
+              label="Rezervasyon Tarihi"
+              value={dateQuery}
+              onChange={setDateQuery}
+              placeholder="Tarih ile ara"
+            />
+            {dateQuery ? (
+              <TouchableOpacity
+                onPress={() => setDateQuery('')}
+                style={styles.resetDateBtn}
+              >
+                <Ionicons name="calendar-clear-outline" size={16} color={colors.warning} />
+                <Text style={styles.resetDateText}>Tarihi Sıfırla</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={styles.searchModalActions}>
+              <TouchableOpacity onPress={clearSearchFilters} style={styles.clearFiltersBtn}>
+                <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+                <Text style={styles.clearFiltersText}>Temizle</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setIsSearchModalOpen(false)}
+                style={styles.applyFiltersBtn}
+              >
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.white} />
+                <Text style={styles.applyFiltersText}>Uygula</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  filterBar: { maxHeight: 52, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.border },
-  filterContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: 8, alignItems: 'center' },
+  // Filtre bar yüksekliği sabit kalsın (seçimde fontWeight değişse bile).
+  filterBar: {
+    height: 52,
+    minHeight: 52,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  filterContent: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 0,
+    gap: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   filterChip: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    height: 32,
+    paddingVertical: 0,
     borderRadius: 20,
     backgroundColor: colors.background,
+    justifyContent: 'center',
   },
   filterChipActive: { backgroundColor: '#DC2626' },
-  filterLabel: { fontSize: 13, fontWeight: '500', color: colors.textSecondary },
-  filterLabelActive: { color: '#fff', fontWeight: '600' },
-  list: { padding: spacing.lg, paddingBottom: 40 },
+  filterLabel: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '500',
+    color: colors.textSecondary,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  filterLabelActive: {
+    color: '#fff',
+    fontWeight: '600',
+    lineHeight: 16,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  searchInput: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 2,
+    minHeight: 36,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.dangerLight,
+  },
+  clearFiltersText: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.danger,
+    includeFontPadding: false,
+  },
+  resetDateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 36,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.warningLight,
+  },
+  resetDateText: {
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '600',
+    color: colors.warning,
+    includeFontPadding: false,
+  },
+  applyFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 2,
+    paddingVertical: 8,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+  },
+  applyFiltersText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  list: { padding: spacing.lg, paddingBottom: 110 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  searchFab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xl,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...shadows.md,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdropTouch: {
+    flex: 1,
+  },
+  searchModalCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    ...shadows.md,
+  },
+  searchModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  searchModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  searchModalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+  },
   card: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,

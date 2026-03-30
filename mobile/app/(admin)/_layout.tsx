@@ -51,18 +51,6 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen
-        name="users"
-        options={{
-          title: 'Kullanıcılar',
-          headerTitle: 'Kullanıcı Yönetimi',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="reservations"
         options={{
           title: 'Rezervasyonlar',
@@ -82,6 +70,18 @@ export default function AdminTabLayout() {
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? styles.activeTab : null}>
               <Ionicons name={focused ? 'grid' : 'grid-outline'} size={22} color={color} />
+            </View>
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="users"
+        options={{
+          title: 'Kullanıcılar',
+          headerTitle: 'Kullanıcı Yönetimi',
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? styles.activeTab : null}>
+              <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
             </View>
           ),
         }}
