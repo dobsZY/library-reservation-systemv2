@@ -205,6 +205,7 @@ export default function HomeScreen() {
 
   const availableTables = stats?.availableTables ?? 0;
   const occupancyRate = stats?.overallOccupancyRate ?? 0;
+  const activeReservationsCount = stats?.activeReservations ?? 0;
 
   return (
     <ScrollView 
@@ -237,7 +238,7 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.summaryLabel}>Rezervasyon</Text>
             <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>
-              {activeReservation ? 1 : 0}
+              {activeReservationsCount}
             </Text>
           </View>
           
