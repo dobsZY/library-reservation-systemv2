@@ -13,9 +13,12 @@ import {
   TableFeature,
   TableLock,
   Reservation,
+  ReservationLog,
   OperatingSchedule,
   Notification,
   UserPreference,
+  User,
+  UserSession,
 } from './database/entities';
 
 // Modules
@@ -24,6 +27,9 @@ import { TablesModule } from './modules/tables/tables.module';
 import { ReservationsModule } from './modules/reservations/reservations.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/users.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -51,9 +57,12 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
           TableFeature,
           TableLock,
           Reservation,
+          ReservationLog,
           OperatingSchedule,
           Notification,
           UserPreference,
+          User,
+          UserSession,
         ],
         synchronize: configService.get('database.synchronize'),
         logging: configService.get('database.logging'),
@@ -64,11 +73,14 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
     ScheduleModule.forRoot(),
 
     // Uygulama Modülleri
+    AuthModule,
+    UsersModule,
     HallsModule,
     TablesModule,
     ReservationsModule,
     StatisticsModule,
     SchedulesModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

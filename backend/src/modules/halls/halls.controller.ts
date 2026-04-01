@@ -43,13 +43,42 @@ export class HallsController {
   @Get(':id/availability')
   @ApiOperation({ summary: 'Salon doluluk durumunu getir' })
   @ApiQuery({ name: 'date', required: false, description: 'Tarih (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'startTime', required: false, description: 'Başlangıç zamanı (ISO 8601)' })
+  @ApiQuery({ name: 'endTime', required: false, description: 'Bitiş zamanı (ISO 8601)' })
   @ApiResponse({ status: 200, description: 'Doluluk durumu', type: HallAvailabilityDto })
   async getAvailability(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('date') dateStr?: string,
+    @Query('startTime') startTimeStr?: string,
+    @Query('endTime') endTimeStr?: string,
   ) {
-    const date = dateStr ? new Date(dateStr) : new Date();
-    return this.hallsService.getHallAvailability(id, date);
+    const now = new Date();
+    const date =
+      dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+        ? (() => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            return new Date(y, m - 1, d, 0, 0, 0, 0);
+          })()
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const startTime = startTimeStr ? new Date(startTimeStr) : undefined;
+    const endTime = endTimeStr ? new Date(endTimeStr) : undefined;
+    return this.hallsService.getHallAvailability(id, date, startTime, endTime);
+  }
+
+  @Get(':id/slots')
+  @ApiOperation({
+    summary: 'Salon masa slotlarını getir (1 saatlik dilimler)',
+    description:
+      'Her masa için gün içindeki 1 saatlik zaman dilimlerini ve müsaitlik durumunu döner. ' +
+      'Çakışma kontrolü reservation motoru ile aynı mantığı kullanır.',
+  })
+  @ApiQuery({ name: 'date', required: false, description: 'Tarih (YYYY-MM-DD), varsayılan: bugün' })
+  @ApiResponse({ status: 200, description: 'Masa slotları' })
+  async getSlots(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('date') dateStr?: string,
+  ) {
+    return this.hallsService.getTableSlots(id, dateStr);
   }
 
   @Post()
@@ -76,4 +105,3 @@ export class HallsController {
     return this.hallsService.remove(id);
   }
 }
-

@@ -5,67 +5,55 @@ import {
   FlatList, 
   TouchableOpacity,
   RefreshControl,
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { HallWithOccupancy } from '../../types';
-import { hallsApi } from '../../api/halls';
+import { Hall } from '../../types';
+import { hallsApi, statisticsApi, HallOccupancy } from '../../api/halls';
+import { handleApiError } from '../../utils/apiError';
+import { onEvent, AppEvents } from '../../utils/events';
+import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 
 export default function HallsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [halls, setHalls] = useState<HallWithOccupancy[]>([]);
+  const [halls, setHalls] = useState<HallOccupancy[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const fetchHalls = async () => {
     try {
       setError(null);
-      const data = await hallsApi.getAllOccupancy();
-      setHalls(data);
+      const overall = await statisticsApi.getOverallOccupancy();
+      setHalls(overall.hallsOccupancy);
     } catch (err: any) {
-      setError(err.message);
-      // Demo veri
-      setHalls([
-        { 
-          id: '1', name: 'A Salonu - Sessiz Çalışma', floor: 1, 
-          totalTables: 40, availableTables: 15, occupancyRate: 62.5,
-          description: 'Bireysel sessiz çalışma alanı',
-          layoutWidth: 800, layoutHeight: 600, capacity: 40,
-          allowedRadiusMeters: 50, isActive: true, displayOrder: 1
-        } as HallWithOccupancy,
-        { 
-          id: '2', name: 'B Salonu - Grup Çalışma', floor: 1, 
-          totalTables: 30, availableTables: 8, occupancyRate: 73.3,
-          description: 'Grup çalışma ve tartışma alanı',
-          layoutWidth: 800, layoutHeight: 600, capacity: 30,
-          allowedRadiusMeters: 50, isActive: true, displayOrder: 2
-        } as HallWithOccupancy,
-        { 
-          id: '3', name: 'C Salonu - Bilgisayar', floor: 2, 
-          totalTables: 25, availableTables: 20, occupancyRate: 20,
-          description: 'Bilgisayarlı çalışma alanı',
-          layoutWidth: 800, layoutHeight: 600, capacity: 25,
-          allowedRadiusMeters: 50, isActive: true, displayOrder: 3
-        } as HallWithOccupancy,
-        { 
-          id: '4', name: 'D Salonu - Çok Amaçlı', floor: 2, 
-          totalTables: 35, availableTables: 5, occupancyRate: 85.7,
-          description: 'Çok amaçlı çalışma alanı',
-          layoutWidth: 800, layoutHeight: 600, capacity: 35,
-          allowedRadiusMeters: 50, isActive: true, displayOrder: 4
-        } as HallWithOccupancy,
-      ]);
+      if (handleApiError(err)) {
+        return;
+      }
+      setError(err.message || 'Salonlar yüklenirken bir hata oluştu.');
+      setHalls([]);
+      Alert.alert('Hata', err.message || 'Salonlar yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  // Tab'a her focus olunduğunda veri yenile
+  useFocusEffect(
+    useCallback(() => {
+      fetchHalls();
+    }, [])
+  );
+
   useEffect(() => {
-    fetchHalls();
+    // Rezervasyon veya istatistik değişince yenile
+    const unsub1 = onEvent(AppEvents.RESERVATION_CHANGED, fetchHalls);
+    const unsub2 = onEvent(AppEvents.STATS_CHANGED, fetchHalls);
+    return () => { unsub1(); unsub2(); };
   }, []);
 
   const onRefresh = useCallback(() => {
@@ -74,9 +62,9 @@ export default function HallsScreen() {
   }, []);
 
   const getOccupancyColor = (rate: number) => {
-    if (rate < 50) return '#22c55e';
-    if (rate < 80) return '#f59e0b';
-    return '#ef4444';
+    if (rate < 50) return colors.success;
+    if (rate < 80) return colors.warning;
+    return colors.danger;
   };
 
   const getStatusLabel = (rate: number) => {
@@ -85,19 +73,19 @@ export default function HallsScreen() {
     return 'Yoğun';
   };
 
-  const renderHallCard = ({ item }: { item: HallWithOccupancy }) => (
+  const renderHallCard = ({ item }: { item: HallOccupancy }) => (
     <TouchableOpacity 
       style={styles.hallCard}
-      onPress={() => router.push(`/hall/${item.id}`)}
+      onPress={() => router.push(`/hall/${item.hallId}`)}
       activeOpacity={0.7}
     >
       {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.hallIcon}>
-          <Ionicons name="library" size={28} color="#1e3a5f" />
+          <Ionicons name="library" size={28} color={colors.textPrimary} />
         </View>
         <View style={styles.hallInfo}>
-          <Text style={styles.hallName}>{item.name}</Text>
+          <Text style={styles.hallName}>{item.hallName}</Text>
           <Text style={styles.hallFloor}>{item.floor}. Kat</Text>
         </View>
         <View style={[
@@ -108,10 +96,7 @@ export default function HallsScreen() {
         </View>
       </View>
 
-      {/* Description */}
-      {item.description && (
-        <Text style={styles.hallDescription}>{item.description}</Text>
-      )}
+      {/* Açıklama backend istatistiklerinde bulunmadığı için gösterilmiyor */}
 
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
@@ -132,17 +117,17 @@ export default function HallsScreen() {
       {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statBox}>
-          <Ionicons name="checkmark-circle-outline" size={20} color="#22c55e" />
+          <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
           <Text style={styles.statValue}>{item.availableTables}</Text>
           <Text style={styles.statLabel}>Boş</Text>
         </View>
         <View style={styles.statBox}>
-          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
+          <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
           <Text style={styles.statValue}>{item.totalTables - item.availableTables}</Text>
           <Text style={styles.statLabel}>Dolu</Text>
         </View>
         <View style={styles.statBox}>
-          <Ionicons name="grid-outline" size={20} color="#1e3a5f" />
+          <Ionicons name="grid-outline" size={20} color={colors.textPrimary} />
           <Text style={styles.statValue}>{item.totalTables}</Text>
           <Text style={styles.statLabel}>Toplam</Text>
         </View>
@@ -151,7 +136,7 @@ export default function HallsScreen() {
       {/* Action Button */}
       <TouchableOpacity 
         style={styles.selectButton}
-        onPress={() => router.push(`/hall/${item.id}`)}
+        onPress={() => router.push(`/hall/${item.hallId}`)}
       >
         <Text style={styles.selectButtonText}>Masa Seç</Text>
         <Ionicons name="arrow-forward" size={18} color="#fff" />
@@ -162,7 +147,7 @@ export default function HallsScreen() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1e3a5f" />
+        <ActivityIndicator size="large" color={colors.textPrimary} />
         <Text style={styles.loadingText}>Salonlar yükleniyor...</Text>
       </View>
     );
@@ -173,7 +158,7 @@ export default function HallsScreen() {
       <FlatList
         data={halls}
         renderItem={renderHallCard}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.hallId}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -200,17 +185,17 @@ export default function HallsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f7fa',
+    backgroundColor: colors.background,
   },
   loadingText: {
     marginTop: 10,
-    color: '#666',
+    color: colors.textSecondary,
   },
   listContainer: {
     padding: 15,
@@ -222,23 +207,19 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1e3a5f',
+    color: colors.textPrimary,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginTop: 5,
   },
   hallCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadows.md,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -248,7 +229,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 12,
-    backgroundColor: '#e8f0f8',
+    backgroundColor: colors.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -259,11 +240,11 @@ const styles = StyleSheet.create({
   hallName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#1e3a5f',
+    color: colors.textPrimary,
   },
   hallFloor: {
     fontSize: 13,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 2,
   },
   statusBadge: {
@@ -291,7 +272,7 @@ const styles = StyleSheet.create({
   progressBar: {
     flex: 1,
     height: 8,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: colors.border,
     borderRadius: 4,
     overflow: 'hidden',
   },
@@ -302,7 +283,7 @@ const styles = StyleSheet.create({
   progressText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: colors.textSecondary,
     minWidth: 40,
     textAlign: 'right',
   },
@@ -315,7 +296,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.background,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
@@ -324,24 +305,24 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
+    color: colors.textPrimary,
   },
   statLabel: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
   },
   selectButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1e3a5f',
+    backgroundColor: colors.textPrimary,
     paddingVertical: 14,
     borderRadius: 12,
     marginTop: 15,
     gap: 8,
   },
   selectButtonText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -353,7 +334,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 15,
   },
 });

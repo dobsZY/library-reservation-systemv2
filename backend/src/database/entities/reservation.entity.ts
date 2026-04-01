@@ -10,15 +10,15 @@ import {
 } from 'typeorm';
 import { Table } from './table.entity';
 import { Hall } from './hall.entity';
+import { User } from './user.entity';
 
 export enum ReservationStatus {
-  PENDING = 'pending',       // QR bekleniyor
-  ACTIVE = 'active',         // Check-in yapıldı, kullanımda
-  COMPLETED = 'completed',   // Normal bitiş
-  EXTENDED = 'extended',     // Zincir ile devam edildi
-  CANCELLED = 'cancelled',   // Kullanıcı iptali
-  EXPIRED = 'expired',       // QR timeout (30 dk)
-  NO_SHOW = 'no_show',       // Gelindi ama QR okutulmadı
+  RESERVED = 'reserved',       // Masa ayrıldı, QR bekleniyor
+  CHECKED_IN = 'checked_in',   // Check-in yapıldı, aktif kullanım
+  COMPLETED = 'completed',     // Normal bitiş
+  CANCELLED = 'cancelled',     // Kullanıcı/sistem iptali
+  EXPIRED = 'expired',         // QR timeout (30 dk)
+  NO_SHOW = 'no_show',         // Gelindi ama check-in yapılmadı
 }
 
 @Entity('reservations')
@@ -26,8 +26,8 @@ export class Reservation {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'user_id', length: 50 })
-  userId: string; // Öğrenci numarası
+  @Column({ name: 'user_id' })
+  userId: string;
 
   @Column({ name: 'table_id' })
   tableId: string;
@@ -46,12 +46,16 @@ export class Reservation {
   endTime: Date;
 
   @Column({ name: 'lock_end_time', type: 'timestamp' })
-  lockEndTime: Date; // start + 3 saat
+  lockEndTime: Date; // start + 3 saat (potansiyel maksimum)
 
-  @Column({ name: 'duration_hours' })
+  @Column({ name: 'duration_hours', default: 1 })
   durationHours: number; // 1, 2 veya 3
 
-  // Zincir rezervasyon
+  // Uzatma
+  @Column({ name: 'extension_count', default: 0 })
+  extensionCount: number; // Maks 2
+
+  // Zincir rezervasyon (geriye uyumluluk)
   @Column({ name: 'is_chain', default: false })
   isChain: boolean;
 
@@ -68,7 +72,7 @@ export class Reservation {
   @Column({
     type: 'enum',
     enum: ReservationStatus,
-    default: ReservationStatus.PENDING,
+    default: ReservationStatus.RESERVED,
   })
   status: ReservationStatus;
 
@@ -118,6 +122,10 @@ export class Reservation {
   updatedAt: Date;
 
   // İlişkiler
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'user_id' })
+  user: User;
+
   @ManyToOne(() => Table, (table) => table.reservations)
   @JoinColumn({ name: 'table_id' })
   table: Table;
@@ -133,4 +141,3 @@ export class Reservation {
   @OneToMany(() => Reservation, (reservation) => reservation.previousReservation)
   chainedReservations: Reservation[];
 }
-

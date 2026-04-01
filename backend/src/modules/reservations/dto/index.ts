@@ -5,56 +5,57 @@ import {
   IsUUID,
   IsDateString,
   IsOptional,
-  Min,
-  Max,
+  IsNotEmpty,
 } from 'class-validator';
+import { ReservationStatus } from '../../../database/entities';
+
+// --- Request DTOs ---
 
 export class CreateReservationDto {
   @ApiProperty({ description: 'Masa ID' })
   @IsUUID()
   tableId: string;
 
-  @ApiProperty({ description: 'Başlangıç zamanı (ISO 8601)', example: '2025-12-28T14:00:00Z' })
+  @ApiProperty({
+    description: 'Baslangic zamani (ISO 8601) - yalnizca bugun icin',
+    example: '2026-03-12T14:00:00.000Z',
+  })
   @IsDateString()
   startTime: string;
-
-  @ApiProperty({ description: 'Süre (saat)', example: 2, minimum: 1, maximum: 3 })
-  @IsNumber()
-  @Min(1)
-  @Max(3)
-  durationHours: number;
-}
-
-export class ExtendReservationDto {
-  @ApiProperty({ description: 'Ek süre (saat)', example: 1, minimum: 1, maximum: 2 })
-  @IsNumber()
-  @Min(1)
-  @Max(2)
-  additionalHours: number;
 }
 
 export class CancelReservationDto {
-  @ApiPropertyOptional({ description: 'İptal nedeni' })
+  @ApiPropertyOptional({ description: 'Iptal nedeni' })
   @IsString()
   @IsOptional()
   reason?: string;
 }
 
 export class CheckInDto {
-  @ApiProperty({ description: 'Masa QR kodu' })
+  @ApiProperty({
+    description: 'Masa QR kodu (zorunlu). Rezervasyon yapilan masanin QR kodu olmalidir.',
+    example: 'SELCUK_LIB_ABC123_TABLE_01_xyz789',
+  })
   @IsString()
+  @IsNotEmpty({ message: 'QR kodu zorunludur.' })
   qrCode: string;
 
-  @ApiPropertyOptional({ description: 'Kullanıcı enlemi' })
-  @IsNumber()
-  @IsOptional()
-  latitude?: number;
+  @ApiProperty({
+    description: 'Kullanici enlemi (zorunlu). Konum dogrulamasi icin gereklidir.',
+    example: 37.8716,
+  })
+  @IsNumber({}, { message: 'Enlem gecerli bir sayi olmalidir.' })
+  latitude: number;
 
-  @ApiPropertyOptional({ description: 'Kullanıcı boylamı' })
-  @IsNumber()
-  @IsOptional()
-  longitude?: number;
+  @ApiProperty({
+    description: 'Kullanici boylami (zorunlu). Konum dogrulamasi icin gereklidir.',
+    example: 32.4938,
+  })
+  @IsNumber({}, { message: 'Boylam gecerli bir sayi olmalidir.' })
+  longitude: number;
 }
+
+// --- Response DTOs ---
 
 export class ReservationResponseDto {
   @ApiProperty()
@@ -79,22 +80,22 @@ export class ReservationResponseDto {
   endTime: Date;
 
   @ApiProperty()
-  lockEndTime: Date;
-
-  @ApiProperty()
   durationHours: number;
 
   @ApiProperty()
-  status: string;
+  extensionCount: number;
 
-  @ApiProperty()
-  isChain: boolean;
+  @ApiProperty({ enum: ReservationStatus })
+  status: ReservationStatus;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true })
   checkedInAt: Date;
 
-  @ApiProperty()
+  @ApiProperty({ nullable: true, description: 'QR okutma son tarihi' })
   qrDeadline: Date;
+
+  @ApiProperty({ description: 'Check-in yapilmis mi' })
+  isCheckedIn: boolean;
 
   @ApiProperty()
   table: object;
@@ -104,5 +105,68 @@ export class ReservationResponseDto {
 
   @ApiProperty()
   createdAt: Date;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Rezervasyon iptal edilme zamani' })
+  cancelledAt?: Date;
+
+  @ApiPropertyOptional({ nullable: true, description: 'Rezervasyon iptal nedeni (örn. admin iptali)' })
+  cancelledReason?: string;
 }
 
+export class CheckInResponseDto {
+  @ApiProperty({ description: 'Basari mesaji', example: 'Check-in basarili.' })
+  message: string;
+
+  @ApiProperty({ enum: ReservationStatus, description: 'Guncel rezervasyon durumu' })
+  status: ReservationStatus;
+
+  @ApiProperty({ description: 'Check-in zamani' })
+  checkedInAt: Date;
+
+  @ApiProperty({ description: 'Masa ID' })
+  tableId: string;
+
+  @ApiProperty({ description: 'Salon ID' })
+  hallId: string;
+
+  @ApiProperty({ description: 'Rezervasyon ID' })
+  reservationId: string;
+
+  @ApiPropertyOptional({ description: 'Hesaplanan mesafe (metre)' })
+  distanceMeters?: number;
+}
+
+export class UserReservationStatusDto {
+  @ApiProperty()
+  canReserve: boolean;
+
+  @ApiPropertyOptional()
+  reason?: string;
+
+  @ApiProperty()
+  hasActiveReservation: boolean;
+
+  @ApiPropertyOptional()
+  activeReservation?: ReservationResponseDto;
+
+  @ApiProperty()
+  canExtend: boolean;
+
+  @ApiProperty()
+  extensionsRemaining: number;
+
+  @ApiProperty()
+  todayReservationCount: number;
+
+  @ApiProperty()
+  operatingHours: {
+    opening: string;
+    closing: string;
+    is24h: boolean;
+  };
+}
+
+export class MessageResponseDto {
+  @ApiProperty()
+  message: string;
+}

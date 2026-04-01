@@ -52,6 +52,7 @@ async function bootstrap() {
       )
       .setVersion('1.0')
       .addBearerAuth()
+      .addTag('auth', 'Kimlik doğrulama işlemleri')
       .addTag('halls', 'Salon işlemleri')
       .addTag('tables', 'Masa işlemleri')
       .addTag('reservations', 'Rezervasyon işlemleri')

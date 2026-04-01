@@ -1,8 +1,31 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Hall, Table, TableLock, LockStatus } from '../../database/entities';
+import {
+  Hall,
+  Table,
+  TableLock,
+  LockStatus,
+  Reservation,
+  ReservationStatus,
+} from '../../database/entities';
 import { CreateHallDto, UpdateHallDto } from './dto';
+import { SchedulesService } from '../schedules/schedules.service';
+
+/** Postgres date / TypeORM eşlemesinde güvenli gün anahtarı (YYYY-MM-DD) */
+function ymdFromJsDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function reservationEndMs(r: Reservation): number {
+  const t = r.endTime as unknown;
+  return t instanceof Date ? t.getTime() : new Date(String(t)).getTime();
+}
+
+function reservationStartMs(r: Reservation): number {
+  const t = r.startTime as unknown;
+  return t instanceof Date ? t.getTime() : new Date(String(t)).getTime();
+}
 
 @Injectable()
 export class HallsService {
@@ -13,6 +36,9 @@ export class HallsService {
     private readonly tableRepository: Repository<Table>,
     @InjectRepository(TableLock)
     private readonly tableLockRepository: Repository<TableLock>,
+    @InjectRepository(Reservation)
+    private readonly reservationRepository: Repository<Reservation>,
+    private readonly schedulesService: SchedulesService,
   ) {}
 
   async findAll(): Promise<Hall[]> {
@@ -50,6 +76,30 @@ export class HallsService {
     return hall;
   }
 
+  /**
+   * reservation_date (date) ile TypeORM find() bazen eşleşmez; to_char ile gün bazında kesin sorgu.
+   */
+  private async reservationsForHallCalendarDay(hallId: string, ymd: string): Promise<Reservation[]> {
+    return this.reservationRepository
+      .createQueryBuilder('r')
+      .where('r.hallId = :hallId', { hallId })
+      .andWhere("to_char(r.reservationDate, 'YYYY-MM-DD') = :ymd", { ymd })
+      .andWhere('r.status IN (:...st)', {
+        st: [ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN],
+      })
+      .getMany();
+  }
+
+  private async locksForHallCalendarDay(hallId: string, ymd: string): Promise<TableLock[]> {
+    return this.tableLockRepository
+      .createQueryBuilder('lock')
+      .innerJoin('lock.table', 'table')
+      .where('table.hallId = :hallId', { hallId })
+      .andWhere("to_char(lock.lockDate, 'YYYY-MM-DD') = :ymd", { ymd })
+      .andWhere('lock.status = :ls', { ls: LockStatus.ACTIVE })
+      .getMany();
+  }
+
   async getHallAvailability(
     hallId: string,
     date: Date,
@@ -72,34 +122,66 @@ export class HallsService {
   }> {
     const hall = await this.findWithTables(hallId);
     const now = new Date();
+    const ymd = ymdFromJsDate(date);
 
-    // Aktif kilitleri al
-    const activeLocks = await this.tableLockRepository.find({
-      where: {
-        table: { hallId },
-        lockDate: date,
-        status: LockStatus.ACTIVE,
-      },
-      relations: ['table'],
-    });
+    const [dayReservations, dayLocks] = await Promise.all([
+      this.reservationsForHallCalendarDay(hallId, ymd),
+      this.locksForHallCalendarDay(hallId, ymd),
+    ]);
 
-    const lockMap = new Map<string, TableLock>();
-    activeLocks.forEach((lock) => {
-      // Şu anki zamanda aktif olan kilitleri kontrol et
-      if (lock.lockStart <= now && lock.lockEnd > now) {
-        lockMap.set(lock.tableId, lock);
+    const busyByTableId = new Map<string, Reservation>();
+    const lockedByTableId = new Map<string, TableLock>();
+    const startMs = startTime?.getTime();
+    const endMs = endTime?.getTime();
+
+    if (startTime && endTime && startMs !== undefined && endMs !== undefined) {
+      for (const r of dayReservations) {
+        if (
+          reservationStartMs(r) < endMs &&
+          reservationEndMs(r) > startMs
+        ) {
+          busyByTableId.set(r.tableId, r);
+        }
       }
-    });
+      for (const l of dayLocks) {
+        const ls = l.lockStart instanceof Date ? l.lockStart.getTime() : new Date(String(l.lockStart)).getTime();
+        const le = l.lockEnd instanceof Date ? l.lockEnd.getTime() : new Date(String(l.lockEnd)).getTime();
+        if (ls < endMs && le > startMs) {
+          lockedByTableId.set(l.tableId, l);
+        }
+      }
+    } else {
+      const nowMs = now.getTime();
+      for (const r of dayReservations) {
+        if (reservationEndMs(r) > nowMs) {
+          busyByTableId.set(r.tableId, r);
+        }
+      }
+      for (const l of dayLocks) {
+        const le = l.lockEnd instanceof Date ? l.lockEnd.getTime() : new Date(String(l.lockEnd)).getTime();
+        if (le > nowMs) {
+          lockedByTableId.set(l.tableId, l);
+        }
+      }
+    }
 
     const tablesWithAvailability = hall.tables.map((table) => {
-      const currentLock = lockMap.get(table.id);
-      const isAvailable = !currentLock;
+      const r = busyByTableId.get(table.id);
+      const lock = lockedByTableId.get(table.id);
+      const isAvailable = !r && !lock;
+
+      let availableFrom: Date | undefined;
+      if (lock) {
+        availableFrom = lock.lockEnd instanceof Date ? lock.lockEnd : new Date(String(lock.lockEnd));
+      } else if (r) {
+        availableFrom = r.endTime as Date;
+      }
 
       return {
         table,
         isAvailable,
-        currentLock,
-        availableFrom: currentLock?.lockEnd,
+        currentLock: lock,
+        availableFrom,
       };
     });
 
@@ -115,6 +197,131 @@ export class HallsService {
         occupied: total - available,
         occupancyRate: total > 0 ? ((total - available) / total) * 100 : 0,
       },
+    };
+  }
+
+  /**
+   * Generate per-table 1-hour slots for the given date.
+   * Conflict checks use the same overlap logic as ReservationsService.create().
+   */
+  async getTableSlots(
+    hallId: string,
+    dateStr?: string,
+  ): Promise<{
+    hallId: string;
+    hallName: string;
+    date: string;
+    operatingHours: { opening: string; closing: string; is24h: boolean };
+    tables: Array<{
+      tableId: string;
+      tableNumber: string;
+      features: Array<{ id: string; name: string; icon: string }>;
+      slots: Array<{
+        startTime: string;
+        endTime: string;
+        isAvailable: boolean;
+        blockedUntil?: string;
+      }>;
+    }>;
+  }> {
+    const hall = await this.findWithTables(hallId);
+    const now = new Date();
+
+    let year: number, month: number, day: number;
+    if (dateStr) {
+      [year, month, day] = dateStr.split('-').map(Number);
+    } else {
+      year = now.getFullYear();
+      month = now.getMonth() + 1;
+      day = now.getDate();
+    }
+    const queryDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const ymd = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    const hours = await this.schedulesService.getOperatingHoursForDate(queryDate);
+    const openH = hours.is24h ? 0 : Number(hours.openingTime.split(':')[0]);
+    const closeH = hours.is24h ? 24 : Number(hours.closingTime.split(':')[0]);
+
+    const [activeReservations, activeLocks] = await Promise.all([
+      this.reservationsForHallCalendarDay(hallId, ymd),
+      this.locksForHallCalendarDay(hallId, ymd),
+    ]);
+
+    const tables = hall.tables.map((table) => {
+      const tableReservations = activeReservations.filter((r) => r.tableId === table.id);
+      const tableLocks = activeLocks.filter((l) => l.tableId === table.id);
+
+      const slots: Array<{
+        startTime: string;
+        endTime: string;
+        isAvailable: boolean;
+        blockedUntil?: string;
+      }> = [];
+
+      for (let h = openH; h < closeH; h++) {
+        const slotStart = new Date(year, month - 1, day, h, 0, 0, 0);
+        const slotEnd = new Date(year, month - 1, day, h + 1, 0, 0, 0);
+
+        if (slotEnd <= now) continue;
+
+        // Same overlap logic as ReservationsService.create()
+        const conflictingReservation = tableReservations.find(
+          (r) => r.startTime < slotEnd && r.endTime > slotStart,
+        );
+        const conflictingLock = tableLocks.find(
+          (l) => l.lockStart < slotEnd && l.lockEnd > slotStart,
+        );
+
+        const isAvailable = !conflictingReservation && !conflictingLock;
+
+        const slot: {
+          startTime: string;
+          endTime: string;
+          isAvailable: boolean;
+          blockedUntil?: string;
+        } = {
+          startTime: slotStart.toISOString(),
+          endTime: slotEnd.toISOString(),
+          isAvailable,
+        };
+
+        if (!isAvailable) {
+          const blockEnd = conflictingLock?.lockEnd ?? conflictingReservation?.endTime;
+          if (blockEnd) {
+            slot.blockedUntil =
+              blockEnd instanceof Date ? blockEnd.toISOString() : String(blockEnd);
+          }
+        }
+
+        slots.push(slot);
+      }
+
+      return {
+        tableId: table.id,
+        tableNumber: table.tableNumber,
+        features: (table.features || []).map((f) => ({
+          id: f.id,
+          name: f.name,
+          icon: f.icon,
+        })),
+        slots,
+      };
+    });
+
+    const usedDateStr =
+      dateStr ||
+      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    return {
+      hallId,
+      hallName: hall.name,
+      date: usedDateStr,
+      operatingHours: {
+        opening: hours.openingTime,
+        closing: hours.closingTime,
+        is24h: hours.is24h,
+      },
+      tables,
     };
   }
 
@@ -135,4 +342,3 @@ export class HallsService {
     await this.hallRepository.save(hall);
   }
 }
-

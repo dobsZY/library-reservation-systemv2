@@ -3,11 +3,18 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
-import { ConfigService } from '@nestjs/config';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  Repository,
+  DataSource,
+  In,
+  LessThan,
+  MoreThan,
+  Between,
+  EntityManager,
+} from 'typeorm';
 import {
   Reservation,
   ReservationStatus,
@@ -15,12 +22,24 @@ import {
   TableLock,
   LockStatus,
   Hall,
-  OperatingSchedule,
+  ReservationLogEvent,
 } from '../../database/entities';
-import { CreateReservationDto, ExtendReservationDto } from './dto';
+import { SchedulesService } from '../schedules/schedules.service';
+import { ReservationEventService } from './reservation-event.service';
+import { CreateReservationDto } from './dto';
+
+/** Sabit degerleri tek yerden yonetmek icin */
+const INITIAL_DURATION_HOURS = 1;
+const MAX_EXTENSION_COUNT = 2;
+const EXTENSION_DURATION_HOURS = 1;
+const QR_TIMEOUT_MINUTES = 30;
+const EXTENSION_WINDOW_MINUTES = 15;
+const MAX_POTENTIAL_HOURS = 3;
 
 @Injectable()
 export class ReservationsService {
+  private readonly logger = new Logger(ReservationsService.name);
+
   constructor(
     @InjectRepository(Reservation)
     private readonly reservationRepository: Repository<Reservation>,
@@ -30,119 +49,268 @@ export class ReservationsService {
     private readonly tableLockRepository: Repository<TableLock>,
     @InjectRepository(Hall)
     private readonly hallRepository: Repository<Hall>,
-    @InjectRepository(OperatingSchedule)
-    private readonly scheduleRepository: Repository<OperatingSchedule>,
-    private readonly configService: ConfigService,
+    private readonly dataSource: DataSource,
+    private readonly schedulesService: SchedulesService,
+    private readonly eventService: ReservationEventService,
   ) {}
 
-  async create(userId: string, createDto: CreateReservationDto): Promise<Reservation> {
-    const { tableId, startTime, durationHours } = createDto;
+  // ──────────────────────────────────────────────────────────────
+  // Rezervasyon olustur
+  // ──────────────────────────────────────────────────────────────
+  async create(userId: string, dto: CreateReservationDto): Promise<Reservation> {
+    const startTime = new Date(dto.startTime);
 
-    // 1. Masa kontrolü
+    // 1. Tarih kontrolu: yalnizca bugun ve gecmis degil
+    this.validateSameDay(startTime);
+
+    // 2. Calisma saatleri kontrolu (startTime gecmis olamaz kontrolu de burada)
+    await this.validateOperatingHours(startTime, INITIAL_DURATION_HOURS);
+
+    // 3. Masa kontrolu
     const table = await this.tableRepository.findOne({
-      where: { id: tableId, isActive: true },
+      where: { id: dto.tableId, isActive: true },
       relations: ['hall'],
     });
-
     if (!table) {
-      throw new NotFoundException('Masa bulunamadı');
+      throw new NotFoundException('Masa bulunamadi veya aktif degil.');
     }
 
-    // 2. Süre kontrolü (1-3 saat)
-    const maxHours = this.configService.get<number>('app.reservationMaxHours', 3);
-    const minHours = this.configService.get<number>('app.reservationMinHours', 1);
-
-    if (durationHours < minHours || durationHours > maxHours) {
-      throw new BadRequestException(`Rezervasyon süresi ${minHours}-${maxHours} saat arasında olmalıdır`);
+    // 4. Kullanicinin aktif rezervasyonu var mi?
+    const activeReservation = await this.findActiveReservation(userId);
+    if (activeReservation) {
+      throw new ConflictException(
+        'Zaten aktif bir rezervasyonunuz var. Yeni rezervasyon icin mevcut rezervasyonunuzu tamamlayin veya iptal edin.',
+      );
     }
 
-    // 3. Çalışma saatleri kontrolü
+    // 5. Transaction ile cakisma kontrolu + olusturma
+    const endTime = new Date(startTime.getTime() + INITIAL_DURATION_HOURS * 60 * 60 * 1000);
+    const lockEndTime = new Date(startTime.getTime() + MAX_POTENTIAL_HOURS * 60 * 60 * 1000);
+    const qrDeadline = new Date(startTime.getTime() + QR_TIMEOUT_MINUTES * 60 * 1000);
     const reservationDate = new Date(startTime);
     reservationDate.setHours(0, 0, 0, 0);
 
-    const isValidTime = await this.checkOperatingHours(new Date(startTime), durationHours);
-    if (!isValidTime) {
-      throw new BadRequestException('Seçilen saat çalışma saatleri dışında');
-    }
+    const savedReservation = await this.dataSource.transaction(
+      async (manager: EntityManager) => {
+        // Pessimistic lock: masa satirini kilitle
+        await manager
+          .createQueryBuilder(Table, 'table')
+          .setLock('pessimistic_write')
+          .where('table.id = :id', { id: dto.tableId })
+          .getOne();
 
-    // 4. Kullanıcının aktif rezervasyonu var mı?
-    const existingActiveReservation = await this.findActiveReservation(userId);
-    
-    if (existingActiveReservation) {
-      // Zincir rezervasyon kontrolü - son 30 dakikada mı?
-      const now = new Date();
-      const minutesRemaining = (existingActiveReservation.endTime.getTime() - now.getTime()) / (1000 * 60);
-      
-      if (minutesRemaining > 30) {
-        throw new ConflictException('Zaten aktif bir rezervasyonunuz var. Yeni rezervasyon için son 30 dakikayı bekleyin.');
-      }
-    }
+        // Ayni masa uzerinde zaman araliginda cakisan aktif rezervasyon var mi?
+        const conflicting = await manager.findOne(Reservation, {
+          where: {
+            tableId: dto.tableId,
+            status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
+            startTime: LessThan(endTime),
+            endTime: MoreThan(startTime),
+          },
+        });
 
-    // 5. Masa müsait mi? (3 saatlik kilit kontrolü)
-    const startDate = new Date(startTime);
-    const lockEndTime = new Date(startDate.getTime() + 3 * 60 * 60 * 1000); // +3 saat kilit
+        if (conflicting) {
+          throw new ConflictException('Bu masa secilen zaman araliginda baska bir kullanici tarafindan kullaniliyor.');
+        }
 
-    const conflictingLock = await this.tableLockRepository.findOne({
-      where: {
-        tableId,
-        status: LockStatus.ACTIVE,
-        lockStart: LessThanOrEqual(lockEndTime),
-        lockEnd: MoreThanOrEqual(startDate),
+        // Zaman araliginda cakisan aktif kilit var mi?
+        const conflictingLock = await manager.findOne(TableLock, {
+          where: {
+            tableId: dto.tableId,
+            status: LockStatus.ACTIVE,
+            lockStart: LessThan(endTime),
+            lockEnd: MoreThan(startTime),
+          },
+        });
+
+        if (conflictingLock) {
+          throw new ConflictException('Bu masa secilen zaman araliginda musait degil.');
+        }
+
+        // Rezervasyon olustur
+        const reservation = manager.create(Reservation, {
+          userId,
+          tableId: dto.tableId,
+          hallId: table.hallId,
+          reservationDate,
+          startTime,
+          endTime,
+          lockEndTime,
+          durationHours: INITIAL_DURATION_HOURS,
+          extensionCount: 0,
+          qrDeadline,
+          status: ReservationStatus.RESERVED,
+        });
+
+        const saved = await manager.save(Reservation, reservation);
+
+        // Masa kilidi olustur – potansiyel 3 saatlik tam pencereyi blokla.
+        // Uzatma yapilmazsa handleCompletions kilidi serbest birakir.
+        const tableLock = manager.create(TableLock, {
+          tableId: dto.tableId,
+          reservationId: saved.id,
+          lockDate: reservationDate,
+          lockStart: startTime,
+          lockEnd: lockEndTime,
+          status: LockStatus.ACTIVE,
+        });
+
+        await manager.save(TableLock, tableLock);
+
+        return saved;
       },
-    });
+    );
 
-    if (conflictingLock) {
-      throw new ConflictException('Bu masa seçilen saatlerde müsait değil');
-    }
-
-    // 6. Rezervasyon oluştur
-    const endTime = new Date(startDate.getTime() + durationHours * 60 * 60 * 1000);
-    const qrTimeoutMinutes = existingActiveReservation 
-      ? this.configService.get<number>('app.chainQrTimeoutMinutes', 15)
-      : this.configService.get<number>('app.qrTimeoutMinutes', 30);
-
-    const qrDeadline = new Date(startDate.getTime() + qrTimeoutMinutes * 60 * 1000);
-
-    const reservation = this.reservationRepository.create({
+    // Log
+    await this.eventService.log(
+      ReservationLogEvent.CREATED,
+      savedReservation.id,
       userId,
-      tableId,
-      hallId: table.hallId,
-      reservationDate,
-      startTime: startDate,
-      endTime,
-      lockEndTime,
-      durationHours,
-      qrDeadline,
-      isChain: !!existingActiveReservation,
-      chainId: existingActiveReservation?.chainId || uuidv4(),
-      chainSequence: existingActiveReservation ? existingActiveReservation.chainSequence + 1 : 1,
-      previousReservationId: existingActiveReservation?.id,
-      status: ReservationStatus.PENDING,
-    });
-
-    const savedReservation = await this.reservationRepository.save(reservation);
-
-    // 7. Masa kilidi oluştur
-    const tableLock = this.tableLockRepository.create({
-      tableId,
-      reservationId: savedReservation.id,
-      lockDate: reservationDate,
-      lockStart: startDate,
-      lockEnd: lockEndTime,
-      status: LockStatus.ACTIVE,
-    });
-
-    await this.tableLockRepository.save(tableLock);
-
-    // 8. Önceki rezervasyonu "extended" olarak işaretle
-    if (existingActiveReservation) {
-      existingActiveReservation.status = ReservationStatus.EXTENDED;
-      await this.reservationRepository.save(existingActiveReservation);
-    }
+      { tableId: dto.tableId, hallId: table.hallId, startTime: startTime.toISOString() },
+    );
 
     return this.findOne(savedReservation.id);
   }
 
+  // ──────────────────────────────────────────────────────────────
+  // Rezervasyon uzat (ayni rezervasyon uzerinde +1 saat)
+  // ──────────────────────────────────────────────────────────────
+  async extend(reservationId: string, userId: string): Promise<Reservation> {
+    const reservation = await this.findOne(reservationId);
+
+    if (reservation.userId !== userId) {
+      throw new BadRequestException('Bu rezervasyon size ait degil.');
+    }
+
+    if (reservation.status !== ReservationStatus.CHECKED_IN) {
+      throw new BadRequestException('Sadece check-in yapilmis rezervasyonlar uzatilabilir.');
+    }
+
+    if (reservation.extensionCount >= MAX_EXTENSION_COUNT) {
+      throw new BadRequestException(
+        `Maksimum uzatma hakkiniz (${MAX_EXTENSION_COUNT}) kullanildi. Yeni rezervasyon yapabilirsiniz.`,
+      );
+    }
+
+    // Uzatma penceresi: mevcut bitis zamanindan 15 dk oncesinde olmali
+    const now = new Date();
+    const minutesRemaining = (reservation.endTime.getTime() - now.getTime()) / (1000 * 60);
+
+    if (minutesRemaining > EXTENSION_WINDOW_MINUTES) {
+      throw new BadRequestException(
+        `Uzatma hakki bitis zamanindan ${EXTENSION_WINDOW_MINUTES} dakika once acilir.`,
+      );
+    }
+
+    if (minutesRemaining < 0) {
+      throw new BadRequestException('Rezervasyon suresi dolmus.');
+    }
+
+    // Calisma saatleri kontrolu
+    const newEndTime = new Date(reservation.endTime.getTime() + EXTENSION_DURATION_HOURS * 60 * 60 * 1000);
+    await this.validateOperatingHoursForExtension(reservation.startTime, newEndTime);
+
+    // Transaction ile cakisma kontrolu + uzatma
+    await this.dataSource.transaction(async (manager: EntityManager) => {
+      // Pessimistic lock
+      await manager
+        .createQueryBuilder(Table, 'table')
+        .setLock('pessimistic_write')
+        .where('table.id = :id', { id: reservation.tableId })
+        .getOne();
+
+      // Uzatma araliginda baska aktif rezervasyon var mi?
+      const conflictingReservation = await manager.findOne(Reservation, {
+        where: {
+          tableId: reservation.tableId,
+          status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
+          id: MoreThan(''), // dummy - asagida NOT kosulu
+          startTime: LessThan(newEndTime),
+          endTime: MoreThan(reservation.endTime),
+        },
+      });
+
+      // Kendi rezervasyonumuzu haric tut
+      if (conflictingReservation && conflictingReservation.id !== reservationId) {
+        throw new ConflictException('Uzatma suresi baska bir rezervasyonla cakisiyor.');
+      }
+
+      // Rezervasyonu guncelle
+      await manager.update(Reservation, reservationId, {
+        endTime: newEndTime,
+        durationHours: reservation.durationHours + EXTENSION_DURATION_HOURS,
+        extensionCount: reservation.extensionCount + 1,
+        notifExtendReminderSent: false,
+        notifLeaveWarningSent: false,
+      });
+
+      // Kilit lockEnd zaten lockEndTime (start+3h) ile olusturuldu;
+      // uzatma suresini asmayi engelle, yoksa guncelleme yapma.
+      const existingLock = await manager.findOne(TableLock, {
+        where: { reservationId, status: LockStatus.ACTIVE },
+      });
+      if (existingLock && newEndTime > existingLock.lockEnd) {
+        await manager.update(
+          TableLock,
+          { id: existingLock.id },
+          { lockEnd: newEndTime },
+        );
+      }
+    });
+
+    await this.eventService.log(
+      ReservationLogEvent.EXTENDED,
+      reservationId,
+      userId,
+      {
+        extensionCount: reservation.extensionCount + 1,
+        newEndTime: newEndTime.toISOString(),
+      },
+    );
+
+    return this.findOne(reservationId);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Rezervasyon iptal et (masa aninda bosalir)
+  // ──────────────────────────────────────────────────────────────
+  async cancel(reservationId: string, userId: string, reason?: string): Promise<Reservation> {
+    const reservation = await this.findOne(reservationId);
+
+    if (reservation.userId !== userId) {
+      throw new BadRequestException('Bu rezervasyon size ait degil.');
+    }
+
+    if (![ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN].includes(reservation.status)) {
+      throw new BadRequestException('Bu rezervasyon iptal edilemez.');
+    }
+
+    const now = new Date();
+
+    reservation.status = ReservationStatus.CANCELLED;
+    reservation.cancelledAt = now;
+    if (reason) {
+      reservation.cancelledReason = reason;
+    }
+
+    await this.reservationRepository.save(reservation);
+
+    // Kilidi aninda serbest birak
+    await this.releaseTableLock(reservationId, now);
+
+    await this.eventService.log(
+      ReservationLogEvent.CANCELLED,
+      reservationId,
+      userId,
+      { reason, cancelledAt: now.toISOString() },
+    );
+
+    return this.findOne(reservationId);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Tekil sorgular
+  // ──────────────────────────────────────────────────────────────
   async findOne(id: string): Promise<Reservation> {
     const reservation = await this.reservationRepository.findOne({
       where: { id },
@@ -150,7 +318,7 @@ export class ReservationsService {
     });
 
     if (!reservation) {
-      throw new NotFoundException('Rezervasyon bulunamadı');
+      throw new NotFoundException('Rezervasyon bulunamadi.');
     }
 
     return reservation;
@@ -165,97 +333,39 @@ export class ReservationsService {
     });
   }
 
+  async findHistoryByUser(userId: string): Promise<Reservation[]> {
+    return this.reservationRepository.find({
+      where: { userId },
+      relations: ['table', 'hall'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   async findActiveReservation(userId: string): Promise<Reservation | null> {
     return this.reservationRepository.findOne({
       where: {
         userId,
-        status: In([ReservationStatus.PENDING, ReservationStatus.ACTIVE]),
+        status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
       },
       relations: ['table', 'hall'],
     });
   }
 
-  async cancel(id: string, userId: string, reason?: string): Promise<Reservation> {
-    const reservation = await this.findOne(id);
-
-    if (reservation.userId !== userId) {
-      throw new BadRequestException('Bu rezervasyon size ait değil');
-    }
-
-    if (![ReservationStatus.PENDING, ReservationStatus.ACTIVE].includes(reservation.status)) {
-      throw new BadRequestException('Bu rezervasyon iptal edilemez');
-    }
-
-    reservation.status = ReservationStatus.CANCELLED;
-    reservation.cancelledAt = new Date();
-    if (reason) {
-      reservation.cancelledReason = reason;
-    }
-
-    // Kilidi serbest bırakmak için zamanla
-    const delayMinutes = this.configService.get<number>('app.lockReleaseDelayMinutes', 5);
-    const releaseTime = new Date(Date.now() + delayMinutes * 60 * 1000);
-
-    await this.tableLockRepository.update(
-      { reservationId: id },
-      { 
-        status: LockStatus.CANCELLED,
-        releaseScheduledAt: releaseTime,
-      },
-    );
-
-    return this.reservationRepository.save(reservation);
-  }
-
-  async extend(id: string, userId: string, extendDto: ExtendReservationDto): Promise<Reservation> {
-    const reservation = await this.findOne(id);
-
-    if (reservation.userId !== userId) {
-      throw new BadRequestException('Bu rezervasyon size ait değil');
-    }
-
-    if (reservation.status !== ReservationStatus.ACTIVE) {
-      throw new BadRequestException('Sadece aktif rezervasyonlar uzatılabilir');
-    }
-
-    // Son 30 dakika kontrolü
-    const now = new Date();
-    const minutesRemaining = (reservation.endTime.getTime() - now.getTime()) / (1000 * 60);
-
-    if (minutesRemaining > 30) {
-      throw new BadRequestException('Uzatma için son 30 dakikayı bekleyin');
-    }
-
-    // Mevcut süre + uzatma <= 3 saat kontrolü
-    const maxHours = this.configService.get<number>('app.reservationMaxHours', 3);
-    const currentHours = reservation.durationHours;
-    const totalHours = currentHours + extendDto.additionalHours;
-
-    if (totalHours > maxHours) {
-      throw new BadRequestException(`Toplam süre ${maxHours} saati geçemez. Yeni rezervasyon yapın.`);
-    }
-
-    // Uzatma uygula
-    const newEndTime = new Date(reservation.endTime.getTime() + extendDto.additionalHours * 60 * 60 * 1000);
-    
-    reservation.endTime = newEndTime;
-    reservation.durationHours = totalHours;
-
-    // Kilit zaten 3 saat olduğu için güncellemeye gerek yok
-
-    return this.reservationRepository.save(reservation);
-  }
-
-  async getUserTodayStats(userId: string): Promise<{
+  // ──────────────────────────────────────────────────────────────
+  // Kullanicinin bugunki durumu
+  // ──────────────────────────────────────────────────────────────
+  async getUserReservationStatus(userId: string): Promise<{
+    canReserve: boolean;
+    reason?: string;
     hasActiveReservation: boolean;
     activeReservation: Reservation | null;
-    canMakeNewReservation: boolean;
     canExtend: boolean;
-    todayReservations: Reservation[];
+    extensionsRemaining: number;
+    todayReservationCount: number;
+    operatingHours: { opening: string; closing: string; is24h: boolean };
   }> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
@@ -269,63 +379,133 @@ export class ReservationsService {
     });
 
     const activeReservation = await this.findActiveReservation(userId);
+    const hours = await this.schedulesService.getOperatingHoursForDate(new Date());
 
-    let canMakeNewReservation = true;
+    let canReserve = true;
     let canExtend = false;
+    let extensionsRemaining = MAX_EXTENSION_COUNT;
+    let reason: string | undefined;
 
     if (activeReservation) {
-      const now = new Date();
-      const minutesRemaining = (activeReservation.endTime.getTime() - now.getTime()) / (1000 * 60);
-      
-      canMakeNewReservation = minutesRemaining <= 30;
-      canExtend = minutesRemaining <= 30 && activeReservation.durationHours < 3;
+      canReserve = false;
+      reason = 'Aktif bir rezervasyonunuz var.';
+
+      extensionsRemaining = MAX_EXTENSION_COUNT - activeReservation.extensionCount;
+
+      if (activeReservation.status === ReservationStatus.CHECKED_IN) {
+        const now = new Date();
+        const minutesRemaining =
+          (activeReservation.endTime.getTime() - now.getTime()) / (1000 * 60);
+
+        canExtend =
+          minutesRemaining <= EXTENSION_WINDOW_MINUTES &&
+          minutesRemaining > 0 &&
+          activeReservation.extensionCount < MAX_EXTENSION_COUNT;
+      }
     }
 
     return {
+      canReserve,
+      reason,
       hasActiveReservation: !!activeReservation,
       activeReservation,
-      canMakeNewReservation,
       canExtend,
-      todayReservations,
+      extensionsRemaining,
+      todayReservationCount: todayReservations.length,
+      operatingHours: {
+        opening: hours.openingTime,
+        closing: hours.closingTime,
+        is24h: hours.is24h,
+      },
     };
   }
 
-  private async checkOperatingHours(startTime: Date, durationHours: number): Promise<boolean> {
-    const date = new Date(startTime);
-    date.setHours(0, 0, 0, 0);
-
-    // Aktif takvimi bul
-    const schedule = await this.scheduleRepository.findOne({
-      where: {
-        isActive: true,
-        startDate: LessThanOrEqual(date),
-        endDate: MoreThanOrEqual(date),
+  // ──────────────────────────────────────────────────────────────
+  // Kilit yonetimi (cron ve diger servisler icin public)
+  // ──────────────────────────────────────────────────────────────
+  async releaseTableLock(reservationId: string, releasedAt: Date): Promise<void> {
+    await this.tableLockRepository.update(
+      { reservationId, status: LockStatus.ACTIVE },
+      {
+        status: LockStatus.RELEASED,
+        releasedAt,
       },
-    });
+    );
+  }
 
-    // 7/24 ise her zaman geçerli
-    if (schedule?.is24h) {
-      return true;
+  // ──────────────────────────────────────────────────────────────
+  // Validasyonlar (private)
+  // ──────────────────────────────────────────────────────────────
+  private validateSameDay(startTime: Date): void {
+    const now = new Date();
+    
+    // Local timezone'da bugunun baslangici (00:00:00)
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    // Local timezone'da startTime'un gunu
+    const startDay = new Date(
+      startTime.getFullYear(),
+      startTime.getMonth(),
+      startTime.getDate(),
+    );
+
+    if (startDay.getTime() !== today.getTime()) {
+      throw new BadRequestException(
+        'Rezervasyonlar yalnizca bugun icin yapilabilir. Ileri tarihli rezervasyon desteklenmemektedir.',
+      );
     }
 
-    const openingTime = schedule?.openingTime || '08:00';
-    const closingTime = schedule?.closingTime || '23:00';
+    // Gecmis kontrolu: startTime simdiden once olamaz
+    if (startTime.getTime() < now.getTime()) {
+      throw new BadRequestException('Gecmis bir saat icin rezervasyon yapilamaz.');
+    }
+  }
 
-    const [openHour, openMin] = openingTime.split(':').map(Number);
-    const [closeHour, closeMin] = closingTime.split(':').map(Number);
+  private async validateOperatingHours(
+    startTime: Date,
+    durationHours: number,
+  ): Promise<void> {
+    // Local timezone'da tarih kontrolu (getOperatingHoursForDate ile ayni mantik)
+    const dateForSchedule = new Date(startTime);
+    dateForSchedule.setHours(0, 0, 0, 0);
+    
+    const hours = await this.schedulesService.getOperatingHoursForDate(dateForSchedule);
 
-    const startHour = startTime.getHours();
-    const startMin = startTime.getMinutes();
+    if (hours.is24h) return;
+
+    const [openH, openM] = hours.openingTime.split(':').map(Number);
+    const [closeH, closeM] = hours.closingTime.split(':').map(Number);
+
+    // Local timezone'da saat/dakika kontrolu
+    const startMinutes = startTime.getHours() * 60 + startTime.getMinutes();
     const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000);
-    const endHour = endTime.getHours();
-    const endMin = endTime.getMinutes();
+    const endMinutes = endTime.getHours() * 60 + endTime.getMinutes();
+    const openMinutes = openH * 60 + openM;
+    const closeMinutes = closeH * 60 + closeM;
 
-    const startMinutes = startHour * 60 + startMin;
-    const endMinutes = endHour * 60 + endMin;
-    const openMinutes = openHour * 60 + openMin;
-    const closeMinutes = closeHour * 60 + closeMin;
+    if (startMinutes < openMinutes || endMinutes > closeMinutes) {
+      throw new BadRequestException(
+        `Secilen saat calisma saatleri disinda. Acilis: ${hours.openingTime}, Kapanis: ${hours.closingTime}`,
+      );
+    }
+  }
 
-    return startMinutes >= openMinutes && endMinutes <= closeMinutes;
+  private async validateOperatingHoursForExtension(
+    startTime: Date,
+    newEndTime: Date,
+  ): Promise<void> {
+    const hours = await this.schedulesService.getOperatingHoursForDate(startTime);
+
+    if (hours.is24h) return;
+
+    const [closeH, closeM] = hours.closingTime.split(':').map(Number);
+    const closeMinutes = closeH * 60 + closeM;
+    const newEndMinutes = newEndTime.getHours() * 60 + newEndTime.getMinutes();
+
+    if (newEndMinutes > closeMinutes) {
+      throw new BadRequestException(
+        `Uzatma calisma saatleri disina tasiyor. Kapanis: ${hours.closingTime}`,
+      );
+    }
   }
 }
-
