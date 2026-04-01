@@ -11,6 +11,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
@@ -96,10 +97,13 @@ function getHistoryStatusColor(status: string): string {
 
 export default function ReservationScreen() {
   const router = useRouter();
+  const EXTEND_REMINDER_TYPE = 'extend_reminder';
+  const QR_DEADLINE_REMINDER_TYPE = 'qr_deadline_reminder_15m';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasActiveReservation, setHasActiveReservation] = useState(false);
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null);
+  const [canExtend, setCanExtend] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [cancelling, setCancelling] = useState(false);
@@ -113,6 +117,7 @@ export default function ReservationScreen() {
     participationRate: 0,
   });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownTotalMsRef = useRef<number>(0);
   const expiryEmittedRef = useRef<string | null>(null); // Sonsuz döngü önleme
 
   const pastReservations = history
@@ -127,6 +132,7 @@ export default function ReservationScreen() {
       status = await reservationsApi.getStatus();
       setHasActiveReservation(!!status?.hasActiveReservation);
       setActiveReservation(status?.activeReservation ?? null);
+      setCanExtend(!!status?.canExtend);
     } catch (error: any) {
       if (handleApiError(error)) return;
       // 404 veya boş değil, gerçek hata
@@ -135,6 +141,7 @@ export default function ReservationScreen() {
       }
       setHasActiveReservation(false);
       setActiveReservation(null);
+      setCanExtend(false);
     }
 
     try {
@@ -147,6 +154,15 @@ export default function ReservationScreen() {
 
     setLoading(false);
     setRefreshing(false);
+  }, []);
+
+  const refreshExtendEligibility = useCallback(async () => {
+    try {
+      const status = await reservationsApi.getStatus();
+      setCanExtend(!!status?.canExtend);
+    } catch {
+      // Sessiz geç: buton görünürlüğü bir sonraki tam yenilemede toparlanır
+    }
   }, []);
 
   // Tab'a her focus olunduğunda veri yenile
@@ -162,6 +178,19 @@ export default function ReservationScreen() {
     return () => unsub();
   }, [fetchReservation]);
 
+  useEffect(() => {
+    if (!activeReservation || activeReservation.status !== 'checked_in') {
+      return;
+    }
+
+    void refreshExtendEligibility();
+    const interval = setInterval(() => {
+      void refreshExtendEligibility();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [activeReservation?.id, activeReservation?.status, refreshExtendEligibility]);
+
   // Kalan süre ve progress bar hesaplama
   useEffect(() => {
     if (timerRef.current) {
@@ -172,26 +201,29 @@ export default function ReservationScreen() {
     if (!activeReservation) {
       setTimeRemaining('');
       setProgressPercent(0);
+      countdownTotalMsRef.current = 0;
       return;
     }
 
+    const isCheckedIn = activeReservation.status === 'checked_in' && !!activeReservation.checkedInAt;
+    const targetTime = isCheckedIn
+      ? new Date(activeReservation.endTime)
+      : new Date(activeReservation.startTime);
+    countdownTotalMsRef.current = Math.max(1, targetTime.getTime() - Date.now());
+
     const updateTimer = () => {
       const now = new Date();
-      const start = new Date(activeReservation.startTime);
-      const end = new Date(activeReservation.endTime);
-      const totalDuration = end.getTime() - start.getTime();
-      const elapsed = now.getTime() - start.getTime();
-      const remaining = end.getTime() - now.getTime();
+      const remaining = targetTime.getTime() - now.getTime();
 
       if (remaining <= 0) {
-        setTimeRemaining('Süre doldu');
-        setProgressPercent(100);
+        setTimeRemaining(isCheckedIn ? 'Süre doldu' : 'Başladı');
+        setProgressPercent(isCheckedIn ? 100 : 0);
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        // Süre dolduğunda sadece bir kez veriyi yenile (sonsuz döngü önleme)
-        if (activeReservation && expiryEmittedRef.current !== activeReservation.id) {
+        // Sadece QR bekleme senaryosunda (reserved) veri yenile
+        if (!isCheckedIn && activeReservation && expiryEmittedRef.current !== activeReservation.id) {
           expiryEmittedRef.current = activeReservation.id;
           setTimeout(() => {
             emitEvent(AppEvents.RESERVATION_CHANGED);
@@ -201,8 +233,21 @@ export default function ReservationScreen() {
         return;
       }
 
-      // Yüzde hesapla (elapsed / total)
-      const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+      // Progress bar:
+      // - checked_in: rezervasyon aralığında (start-end) geçen süreye göre dolar
+      // - reserved: başlangıç saatine kadar geçen süreye göre dolar
+      const pct = isCheckedIn
+        ? (() => {
+            const reservationStart = new Date(activeReservation.startTime);
+            const reservationEnd = new Date(activeReservation.endTime);
+            const totalReservationMs = Math.max(1, reservationEnd.getTime() - reservationStart.getTime());
+            const elapsedSinceStart = now.getTime() - reservationStart.getTime();
+            return Math.min(100, Math.max(0, (elapsedSinceStart / totalReservationMs) * 100));
+          })()
+        : (() => {
+            const elapsed = countdownTotalMsRef.current - remaining;
+            return Math.min(100, Math.max(0, (elapsed / countdownTotalMsRef.current) * 100));
+          })();
       setProgressPercent(pct);
 
       const hours = Math.floor(remaining / (1000 * 60 * 60));
@@ -220,6 +265,139 @@ export default function ReservationScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [activeReservation]);
+
+  useEffect(() => {
+    const syncExtendReminderNotification = async () => {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const extendNotifications = scheduled.filter(
+        (n) => (n.content.data as any)?.type === EXTEND_REMINDER_TYPE,
+      );
+      const qrDeadlineNotifications = scheduled.filter(
+        (n) => (n.content.data as any)?.type === QR_DEADLINE_REMINDER_TYPE,
+      );
+
+      if (!activeReservation) {
+        await Promise.all([
+          ...extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+          ...qrDeadlineNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        ]);
+        return;
+      }
+
+      // QR okutma son süresine 15 dk kala hatırlatma (yalnızca RESERVED)
+      // Örn: start 15:00, qrDeadline 15:30 ise bildirim 15:15'te.
+      if (activeReservation.status === 'reserved') {
+        const now = Date.now();
+        const qrDeadlineMs = activeReservation.qrDeadline
+          ? new Date(activeReservation.qrDeadline).getTime()
+          : new Date(activeReservation.startTime).getTime() + 30 * 60 * 1000;
+        const triggerMs = qrDeadlineMs - 15 * 60 * 1000;
+        const reminderKey = `${activeReservation.id}:${qrDeadlineMs}`;
+
+        if (qrDeadlineMs <= now) {
+          await Promise.all(
+            qrDeadlineNotifications.map((n) =>
+              Notifications.cancelScheduledNotificationAsync(n.identifier),
+            ),
+          );
+        } else {
+          const existingSame = qrDeadlineNotifications.find(
+            (n) => (n.content.data as any)?.key === reminderKey,
+          );
+          if (!existingSame) {
+            await Promise.all(
+              qrDeadlineNotifications.map((n) =>
+                Notifications.cancelScheduledNotificationAsync(n.identifier),
+              ),
+            );
+            const triggerDate = new Date(Math.max(now + 1000, triggerMs));
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'QR okutmanız için son 15 dakika',
+                body: 'Rezervasyonunuz iptal olmadan QR kodunuzu okutun.',
+                sound: true,
+                data: {
+                  type: QR_DEADLINE_REMINDER_TYPE,
+                  key: reminderKey,
+                  route: '/(tabs)/reservation',
+                },
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+              },
+            });
+          }
+        }
+      } else {
+        await Promise.all(
+          qrDeadlineNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+      }
+
+      if (activeReservation.status !== 'checked_in') {
+        await Promise.all(
+          extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+        return;
+      }
+
+      const now = Date.now();
+      const endMs = new Date(activeReservation.endTime).getTime();
+      const triggerMs = endMs - 15 * 60 * 1000;
+      const reminderKey = `${activeReservation.id}:${activeReservation.endTime}`;
+
+      if (endMs <= now) {
+        await Promise.all(
+          extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+        return;
+      }
+
+      const existingSame = extendNotifications.find(
+        (n) => (n.content.data as any)?.key === reminderKey,
+      );
+      if (existingSame) {
+        return;
+      }
+
+      await Promise.all(
+        extendNotifications.map((n) =>
+          Notifications.cancelScheduledNotificationAsync(n.identifier),
+        ),
+      );
+
+      const triggerDate = new Date(Math.max(now + 1000, triggerMs));
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Sürenizin bitmesine 15 dakika kaldı',
+          body: 'Rezervasyon sürenizi uzatmak ister misiniz?',
+          sound: true,
+          data: {
+            type: EXTEND_REMINDER_TYPE,
+            key: reminderKey,
+            route: '/(tabs)/reservation',
+          },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerDate,
+        },
+      });
+    };
+
+    void syncExtendReminderNotification();
+  }, [activeReservation?.id, activeReservation?.status, activeReservation?.endTime, activeReservation?.startTime]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -549,7 +727,7 @@ export default function ReservationScreen() {
 
       {/* Eylem Butonları */}
       <View style={styles.actionsContainer}>
-        {isCheckedIn && (
+        {isCheckedIn && canExtend && (
           <TouchableOpacity 
             style={[styles.actionButton, styles.extendButton]}
             onPress={() => {

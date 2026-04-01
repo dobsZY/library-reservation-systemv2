@@ -3,7 +3,8 @@ import {
   Text, 
   StyleSheet, 
   TouchableOpacity,
-  ActivityIndicator 
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
@@ -30,6 +31,31 @@ export default function QRScanScreen() {
   const checkLocationPermission = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     setLocationPermission(status === 'granted');
+  };
+
+  const handleCameraPermissionPress = () => {
+    if (permission && !permission.canAskAgain) {
+      showAppDialog(
+        'Kamera İzni Kapalı',
+        'Kamera iznini daha once reddettiniz. QR kod taramak icin Ayarlar ekranindan kamera iznini acabilirsiniz.',
+        [
+          { text: 'Vazgec', style: 'cancel' },
+          { text: 'Ayarlari Ac', onPress: () => Linking.openSettings() },
+        ],
+        'warning',
+      );
+      return;
+    }
+
+    showAppDialog(
+      'Kamera Erisimi',
+      'QR kod okutmak icin kamera erisimi gerekiyor. Devam ettiginizde sistem izin ekrani acilacak.',
+      [
+        { text: 'Simdi Degil', style: 'cancel' },
+        { text: 'Devam Et', onPress: () => void requestPermission() },
+      ],
+      'info',
+    );
   };
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
@@ -103,7 +129,7 @@ export default function QRScanScreen() {
         <Text style={styles.permissionText}>
           QR kod okutmak için kamera erişimine ihtiyacımız var.
         </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+        <TouchableOpacity style={styles.permissionButton} onPress={handleCameraPermissionPress}>
           <Text style={styles.permissionButtonText}>İzin Ver</Text>
         </TouchableOpacity>
       </View>

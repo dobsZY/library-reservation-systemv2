@@ -87,17 +87,20 @@ export default function HomeScreen() {
 
     const updateTimer = () => {
       const now = new Date();
-      const end = new Date(activeReservation.endTime);
-      const diff = end.getTime() - now.getTime();
+      const isCheckedIn = activeReservation.status === 'checked_in' && !!activeReservation.checkedInAt;
+      const targetTime = isCheckedIn
+        ? new Date(activeReservation.endTime)
+        : new Date(activeReservation.startTime);
+      const diff = targetTime.getTime() - now.getTime();
 
       if (diff <= 0) {
-        setTimeRemaining('Süre doldu');
+        setTimeRemaining(isCheckedIn ? 'Süre doldu' : 'Başladı');
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        // Süre dolduğunda sadece bir kez veriyi yenile (sonsuz döngü önleme)
-        if (expiryEmittedRef.current !== activeReservation.id) {
+        // Sadece QR bekleme senaryosunda (reserved) veri yenile
+        if (!isCheckedIn && expiryEmittedRef.current !== activeReservation.id) {
           expiryEmittedRef.current = activeReservation.id;
           setTimeout(() => {
             emitEvent(AppEvents.RESERVATION_CHANGED);
