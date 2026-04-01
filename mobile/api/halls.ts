@@ -18,6 +18,7 @@ export interface OverallStatistics {
   occupiedTables: number;
   availableTables: number;
   overallOccupancyRate: number;
+  activeReservations: number;
   hallsOccupancy: HallOccupancy[];
 }
 

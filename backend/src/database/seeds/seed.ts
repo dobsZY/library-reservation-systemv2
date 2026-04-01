@@ -4,12 +4,21 @@ import { DataSource } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
 import { OperatingSchedule, ScheduleType } from '../entities/operating-schedule.entity';
 import { Hall } from '../entities/hall.entity';
+import { Table, TableStatus } from '../entities/table.entity';
 import { hashPassword } from '../../modules/auth/auth.utils';
 
 // Selcuk Universitesi Merkez Kutuphane referans koordinatlari
-const LIBRARY_CENTER_LATITUDE = 37.8716;
-const LIBRARY_CENTER_LONGITUDE = 32.4938;
+const LIBRARY_CENTER_LATITUDE = 38.02398;
+const LIBRARY_CENTER_LONGITUDE = 32.51215;
 const DEFAULT_ALLOWED_RADIUS_METERS = 50;
+const HALL_TABLE_COUNTS: Array<{ code: string; count: number }> = [
+  { code: 'A', count: 104 },
+  { code: 'B', count: 112 },
+  { code: 'C', count: 104 },
+  { code: 'D', count: 100 },
+  { code: 'E', count: 100 },
+  { code: 'F', count: 104 },
+];
 
 const SEED_USERS = [
   {
@@ -99,6 +108,7 @@ async function seed() {
 
   // Mevcut salonlara koordinat bilgisi ekle (check-in icin gerekli)
   const hallRepo = dataSource.getRepository(Hall);
+  const tableRepo = dataSource.getRepository(Table);
   const halls = await hallRepo.find();
 
   for (const hall of halls) {
@@ -115,6 +125,69 @@ async function seed() {
 
   if (halls.length === 0) {
     console.log('  [BILGI] Henuz salon tanimlanmamis. Salonlar olusturulduktan sonra seed tekrar calistirilabilir.');
+  }
+
+  // Excel'deki SALON MASALARI verisine göre varsayilan salon/masa olustur
+  for (let index = 0; index < HALL_TABLE_COUNTS.length; index++) {
+    const { code, count } = HALL_TABLE_COUNTS[index];
+    const hallName = `${code} Salonu`;
+    let hall = await hallRepo.findOne({ where: { name: hallName } });
+
+    if (!hall) {
+      hall = hallRepo.create({
+        name: hallName,
+        floor: 1,
+        description: `${code} bloğu çalışma salonu`,
+        layoutWidth: 1400,
+        layoutHeight: 900,
+        capacity: count,
+        isActive: true,
+        displayOrder: index + 1,
+        centerLatitude: LIBRARY_CENTER_LATITUDE,
+        centerLongitude: LIBRARY_CENTER_LONGITUDE,
+        allowedRadiusMeters: DEFAULT_ALLOWED_RADIUS_METERS,
+      });
+      hall = await hallRepo.save(hall);
+      console.log(`  [OLUSTURULDU] Salon: ${hallName} (kapasite: ${count})`);
+    } else {
+      hall.capacity = count;
+      hall.isActive = true;
+      hall.centerLatitude = LIBRARY_CENTER_LATITUDE;
+      hall.centerLongitude = LIBRARY_CENTER_LONGITUDE;
+      hall.allowedRadiusMeters = DEFAULT_ALLOWED_RADIUS_METERS;
+      hall = await hallRepo.save(hall);
+      console.log(`  [GUNCELLENDI] Salon: ${hallName} (kapasite: ${count})`);
+    }
+
+    const existingTables = await tableRepo.find({
+      where: { hallId: hall.id },
+      select: { tableNumber: true },
+    });
+    const existingTableNumbers = new Set(existingTables.map((t) => t.tableNumber));
+
+    let createdCount = 0;
+    for (let i = 1; i <= count; i++) {
+      const tableNumber = `${code} ${i.toString().padStart(3, '0')}`;
+      if (existingTableNumbers.has(tableNumber)) continue;
+
+      const col = (i - 1) % 16;
+      const row = Math.floor((i - 1) / 16);
+      const table = tableRepo.create({
+        hallId: hall.id,
+        tableNumber,
+        positionX: 60 + col * 80,
+        positionY: 60 + row * 80,
+        width: 52,
+        height: 52,
+        rotation: 0,
+        qrCode: `SELCUK_LIB_${hall.id.slice(0, 8)}_${tableNumber.replace(/\s+/g, '')}_${Math.random().toString(36).slice(2, 10)}`,
+        status: TableStatus.AVAILABLE,
+        isActive: true,
+      });
+      await tableRepo.save(table);
+      createdCount++;
+    }
+    console.log(`  [BILGI] ${hallName} masalari: +${createdCount} yeni, toplam hedef ${count}`);
   }
 
   console.log('\nSeed tamamlandi!');

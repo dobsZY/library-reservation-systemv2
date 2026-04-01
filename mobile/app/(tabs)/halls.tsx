@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback } from 'react';
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Hall } from '../../types';
 import { hallsApi, statisticsApi, HallOccupancy } from '../../api/halls';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, AppEvents } from '../../utils/events';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 
@@ -35,7 +35,7 @@ export default function HallsScreen() {
       }
       setError(err.message || 'Salonlar yüklenirken bir hata oluştu.');
       setHalls([]);
-      Alert.alert('Hata', err.message || 'Salonlar yüklenirken bir hata oluştu.');
+      showAppDialog('Hata', err.message || 'Salonlar yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
       setRefreshing(false);

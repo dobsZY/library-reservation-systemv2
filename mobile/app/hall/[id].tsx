@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
-  Alert,
   Dimensions,
   RefreshControl,
   InteractionManager,
@@ -20,9 +19,12 @@ import { Hall, TableAvailabilityItem, HallSlotsResponse, TableSlotItem, Reservat
 import { hallsApi } from '../../api/halls';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { emitEvent, onEvent, AppEvents } from '../../utils/events';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+/** Alt sayfa başlığındaki kapatma ikonu — dar ekranlarda taşmayı önlemek için üst sınırlı ölçek */
+const SHEET_CLOSE_ICON_SIZE = Math.round(Math.min(26, Math.max(20, SCREEN_WIDTH * 0.062)));
 // `mapContainer` içinde hem `margin` hem `padding` var:
 // margin: spacing.lg (sol+sağ) + padding: spacing.md (sol+sağ)
 // Harita genişliğini bunları düşerek hesaplayınca telefon ekranına taşma azalır.
@@ -120,11 +122,7 @@ export default function HallDetailScreen() {
     const tableItem = selectedTableRef.current;
     const slot = selectedSlotRef.current;
     if (!tableItem || !slot) {
-      if (Platform.OS === 'web') {
-        window.alert('Lütfen bir saat seçin.');
-      } else {
-        Alert.alert('Uyarı', 'Lütfen bir saat seçin.');
-      }
+      showAppDialog('Uyarı', 'Lütfen bir saat seçin.');
       return;
     }
     void createReservation();
@@ -176,33 +174,25 @@ export default function HallDetailScreen() {
       setSelectedTableItem(null);
       setSelectedSlot(null);
 
-      if (Platform.OS === 'web') {
-        window.alert('Rezervasyonunuz başarıyla oluşturuldu.');
-        router.replace('/(tabs)/reservation');
-      } else {
-        InteractionManager.runAfterInteractions(() => {
-          Alert.alert(
-            'Rezervasyon oluşturuldu',
-            'Rezervasyonunuz başarıyla oluşturuldu.',
-            [
-              {
-                text: 'Rezervasyona Git',
-                onPress: () => router.replace('/(tabs)/reservation'),
-              },
-              { text: 'Tamam', style: 'cancel' },
-            ]
-          );
-        });
-      }
+      InteractionManager.runAfterInteractions(() => {
+        showAppDialog(
+          'Rezervasyon oluşturuldu',
+          'Rezervasyonunuz başarıyla oluşturuldu.',
+          [
+            {
+              text: 'Rezervasyona Git',
+              onPress: () => router.replace('/(tabs)/reservation'),
+            },
+            { text: 'Tamam', style: 'cancel' },
+          ],
+          'success',
+        );
+      });
     } catch (err: any) {
       if (handleApiError(err)) {
         return;
       }
-      if (Platform.OS === 'web') {
-        window.alert(err?.message || 'Rezervasyon oluşturulamadı.');
-      } else {
-        Alert.alert('Hata', err?.message || 'Rezervasyon oluşturulamadı.');
-      }
+      showAppDialog('Hata', err?.message || 'Rezervasyon oluşturulamadı.');
     } finally {
       setReserving(false);
     }
@@ -394,9 +384,11 @@ export default function HallDetailScreen() {
               <View style={styles.tableIcon}>
                 <Ionicons name="grid" size={20} color={colors.primary} />
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sheetTitle}>Masa {selectedTableItem.table.tableNumber}</Text>
-                <Text style={styles.sheetSubtitle}>
+              <View style={styles.sheetTitleTextWrap}>
+                <Text style={styles.sheetTitle} numberOfLines={1} ellipsizeMode="tail">
+                  Masa {selectedTableItem.table.tableNumber}
+                </Text>
+                <Text style={styles.sheetSubtitle} numberOfLines={2} ellipsizeMode="tail">
                   {selectedTableItem.isAvailable ? (
                     <Text style={{ color: colors.success }}>Müsait</Text>
                   ) : (
@@ -416,14 +408,17 @@ export default function HallDetailScreen() {
                 </Text>
               </View>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.closeButton}
               onPress={() => {
                 setSelectedTableItem(null);
                 setSelectedSlot(null);
               }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
             >
-              <Ionicons name="close" size={24} color={colors.textSecondary} />
+              <Ionicons name="close" size={SHEET_CLOSE_ICON_SIZE} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -771,11 +766,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   sheetTitleRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+  },
+  sheetTitleTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   tableIcon: {
     width: 44,
@@ -796,7 +798,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeButton: {
+    flexShrink: 0,
+    marginLeft: spacing.xs,
     padding: spacing.xs,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   noteCard: {

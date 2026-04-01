@@ -1,9 +1,11 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import * as Notifications from 'expo-notifications';
 import { onEvent, AppEvents } from '../utils/events';
 import { handleApiError } from '../utils/apiError';
+import AppDialogHost from '../components/AppDialogHost';
+import { getToken } from '../api/auth';
 
 /** Web dahil tüm platformlarda açılışın `app/index.tsx` üzerinden yapılmasını zorunlu kılar. */
 export const unstable_settings = {
@@ -21,6 +23,7 @@ Notifications.setNotificationHandler({
 });
 
 export default function RootLayout() {
+  const router = useRouter();
   useEffect(() => {
     const init = async () => {
       try {
@@ -37,6 +40,32 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    const handleNotificationNavigation = async (data: any) => {
+      if (!data || (data.type !== 'extend_reminder' && data.type !== 'qr_deadline_reminder_15m')) return;
+      const token = await getToken();
+      if (!token) {
+        router.replace({
+          pathname: '/login',
+          params: { redirect: '/(tabs)/reservation' },
+        });
+        return;
+      }
+      router.replace('/(tabs)/reservation');
+    };
+
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      void handleNotificationNavigation(response.notification.request.content.data);
+    });
+
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      void handleNotificationNavigation(response.notification.request.content.data);
+    });
+
+    return () => sub.remove();
+  }, [router]);
+
+  useEffect(() => {
     const unsub = onEvent(AppEvents.UNAUTHORIZED, () => {
       handleApiError({ message: 'Oturum süreniz sona erdi', status: 401 });
     });
@@ -46,6 +75,7 @@ export default function RootLayout() {
 
   return (
     <>
+      <AppDialogHost />
       <StatusBar style="light" />
       <Stack
         screenOptions={{

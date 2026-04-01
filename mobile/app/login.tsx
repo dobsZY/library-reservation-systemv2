@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { login } from '../api/auth';
 import { colors, spacing, borderRadius } from '../constants/theme';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const { redirect } = useLocalSearchParams<{ redirect?: string }>();
   const [studentNumber, setStudentNumber] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,10 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const res = await login(studentNumber.trim(), password);
+      if (typeof redirect === 'string' && redirect.length > 0) {
+        router.replace(redirect as any);
+        return;
+      }
       if (res.user.role === 'admin') {
         router.replace('/(admin)');
       } else {

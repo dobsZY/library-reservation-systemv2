@@ -25,6 +25,7 @@ const CHECK_IN_ERRORS = {
   NOT_YOUR_RESERVATION: 'Bu rezervasyon size ait degil.',
   ALREADY_CHECKED_IN: 'Bu rezervasyon icin zaten check-in yapilmis.',
   INVALID_STATUS: 'Bu rezervasyon icin check-in yapilamaz. Mevcut durum: ',
+  TOO_EARLY: 'Rezervasyon saatiniz henuz baslamadi. Baslangic saatinde tekrar deneyin.',
   TABLE_NOT_FOUND: 'Rezervasyona ait masa bulunamadi.',
   INVALID_QR_CODE: 'Gecersiz QR kod. Lutfen rezervasyon yaptiginiz masanin QR kodunu okutun.',
   QR_DEADLINE_EXPIRED: 'QR okutma suresi doldu. Rezervasyonunuz iptal edilebilir.',
@@ -92,6 +93,9 @@ export class CheckInService {
 
     // 5. QR deadline kontrolu
     const now = new Date();
+    if (now < reservation.startTime) {
+      throw new BadRequestException(CHECK_IN_ERRORS.TOO_EARLY);
+    }
     if (reservation.qrDeadline && now > reservation.qrDeadline) {
       throw new BadRequestException(CHECK_IN_ERRORS.QR_DEADLINE_EXPIRED);
     }

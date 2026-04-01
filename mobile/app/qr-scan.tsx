@@ -3,8 +3,8 @@ import {
   Text, 
   StyleSheet, 
   TouchableOpacity,
-  Alert,
-  ActivityIndicator 
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useEffect } from 'react';
@@ -13,6 +13,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { reservationsApi } from '../api/reservations';
 import { handleApiError } from '../utils/apiError';
+import { showAppDialog } from '../utils/appDialogController';
 import { emitEvent, AppEvents } from '../utils/events';
 import { colors } from '../constants/theme';
 
@@ -30,6 +31,31 @@ export default function QRScanScreen() {
   const checkLocationPermission = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     setLocationPermission(status === 'granted');
+  };
+
+  const handleCameraPermissionPress = () => {
+    if (permission && !permission.canAskAgain) {
+      showAppDialog(
+        'Kamera İzni Kapalı',
+        'Kamera iznini daha once reddettiniz. QR kod taramak icin Ayarlar ekranindan kamera iznini acabilirsiniz.',
+        [
+          { text: 'Vazgec', style: 'cancel' },
+          { text: 'Ayarlari Ac', onPress: () => Linking.openSettings() },
+        ],
+        'warning',
+      );
+      return;
+    }
+
+    showAppDialog(
+      'Kamera Erisimi',
+      'QR kod okutmak icin kamera erisimi gerekiyor. Devam ettiginizde sistem izin ekrani acilacak.',
+      [
+        { text: 'Simdi Degil', style: 'cancel' },
+        { text: 'Devam Et', onPress: () => void requestPermission() },
+      ],
+      'info',
+    );
   };
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
@@ -55,7 +81,7 @@ export default function QRScanScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
 
-      Alert.alert(
+      showAppDialog(
         'Başarılı! ✓',
         'Masanıza giriş yapıldı. İyi çalışmalar!',
         [
@@ -63,14 +89,15 @@ export default function QRScanScreen() {
             text: 'Tamam', 
             onPress: () => router.replace('/(tabs)/reservation')
           }
-        ]
+        ],
+        'success',
       );
     } catch (error: any) {
       if (handleApiError(error)) {
         return;
       }
       const message = error?.message || 'Check-in sırasında bir hata oluştu.';
-      Alert.alert('Hata', message, [
+      showAppDialog('Hata', message, [
         {
           text: 'Tamam',
           onPress: () => {
@@ -102,7 +129,7 @@ export default function QRScanScreen() {
         <Text style={styles.permissionText}>
           QR kod okutmak için kamera erişimine ihtiyacımız var.
         </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+        <TouchableOpacity style={styles.permissionButton} onPress={handleCameraPermissionPress}>
           <Text style={styles.permissionButtonText}>İzin Ver</Text>
         </TouchableOpacity>
       </View>

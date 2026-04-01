@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, MoreThan, Repository } from 'typeorm';
 import { Hall, Table, TableLock, LockStatus, Reservation } from '../../database/entities';
+import { ReservationStatus } from '../../database/entities/reservation.entity';
 
 export interface HallOccupancy {
   hallId: string;
@@ -20,6 +21,7 @@ export interface OverallStatistics {
   occupiedTables: number;
   availableTables: number;
   overallOccupancyRate: number;
+  activeReservations: number;
   hallsOccupancy: HallOccupancy[];
   peakHours: Array<{ hour: number; occupancy: number }>;
 }
@@ -91,12 +93,22 @@ export class StatisticsService {
     const totalTables = allTables.length;
     const occupiedTables = lockedTableIds.size;
 
+    // Sistemde aktif sayılan rezervasyonlar: henüz bitmemiş RESERVED veya CHECKED_IN
+    // (İleri saatli rezervasyonlar da dahil; rezervasyonlar zaten sadece "bugün" için oluşturulabiliyor.)
+    const activeReservations = await this.reservationRepository.count({
+      where: {
+        status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
+        endTime: MoreThan(now),
+      },
+    });
+
     return {
       totalHalls: halls.length,
       totalTables,
       occupiedTables,
       availableTables: totalTables - occupiedTables,
       overallOccupancyRate: totalTables > 0 ? (occupiedTables / totalTables) * 100 : 0,
+      activeReservations,
       hallsOccupancy,
       peakHours: await this.getPeakHours(),
     };

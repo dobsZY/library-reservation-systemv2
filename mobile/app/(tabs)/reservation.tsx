@@ -7,16 +7,16 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
 import { Reservation } from '../../types';
 import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
+import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, emitEvent, AppEvents } from '../../utils/events';
 
 interface UserStats {
@@ -97,10 +97,13 @@ function getHistoryStatusColor(status: string): string {
 
 export default function ReservationScreen() {
   const router = useRouter();
+  const EXTEND_REMINDER_TYPE = 'extend_reminder';
+  const QR_DEADLINE_REMINDER_TYPE = 'qr_deadline_reminder_15m';
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [hasActiveReservation, setHasActiveReservation] = useState(false);
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null);
+  const [canExtend, setCanExtend] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [cancelling, setCancelling] = useState(false);
@@ -114,6 +117,7 @@ export default function ReservationScreen() {
     participationRate: 0,
   });
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownTotalMsRef = useRef<number>(0);
   const expiryEmittedRef = useRef<string | null>(null); // Sonsuz döngü önleme
 
   const pastReservations = history
@@ -128,14 +132,16 @@ export default function ReservationScreen() {
       status = await reservationsApi.getStatus();
       setHasActiveReservation(!!status?.hasActiveReservation);
       setActiveReservation(status?.activeReservation ?? null);
+      setCanExtend(!!status?.canExtend);
     } catch (error: any) {
       if (handleApiError(error)) return;
       // 404 veya boş değil, gerçek hata
       if (error?.status !== 404) {
-        Alert.alert('Hata', error?.message || 'Rezervasyon bilgileri alınamadı.');
+        showAppDialog('Hata', error?.message || 'Rezervasyon bilgileri alınamadı.');
       }
       setHasActiveReservation(false);
       setActiveReservation(null);
+      setCanExtend(false);
     }
 
     try {
@@ -148,6 +154,15 @@ export default function ReservationScreen() {
 
     setLoading(false);
     setRefreshing(false);
+  }, []);
+
+  const refreshExtendEligibility = useCallback(async () => {
+    try {
+      const status = await reservationsApi.getStatus();
+      setCanExtend(!!status?.canExtend);
+    } catch {
+      // Sessiz geç: buton görünürlüğü bir sonraki tam yenilemede toparlanır
+    }
   }, []);
 
   // Tab'a her focus olunduğunda veri yenile
@@ -163,6 +178,19 @@ export default function ReservationScreen() {
     return () => unsub();
   }, [fetchReservation]);
 
+  useEffect(() => {
+    if (!activeReservation || activeReservation.status !== 'checked_in') {
+      return;
+    }
+
+    void refreshExtendEligibility();
+    const interval = setInterval(() => {
+      void refreshExtendEligibility();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [activeReservation?.id, activeReservation?.status, refreshExtendEligibility]);
+
   // Kalan süre ve progress bar hesaplama
   useEffect(() => {
     if (timerRef.current) {
@@ -173,26 +201,29 @@ export default function ReservationScreen() {
     if (!activeReservation) {
       setTimeRemaining('');
       setProgressPercent(0);
+      countdownTotalMsRef.current = 0;
       return;
     }
 
+    const isCheckedIn = activeReservation.status === 'checked_in' && !!activeReservation.checkedInAt;
+    const targetTime = isCheckedIn
+      ? new Date(activeReservation.endTime)
+      : new Date(activeReservation.startTime);
+    countdownTotalMsRef.current = Math.max(1, targetTime.getTime() - Date.now());
+
     const updateTimer = () => {
       const now = new Date();
-      const start = new Date(activeReservation.startTime);
-      const end = new Date(activeReservation.endTime);
-      const totalDuration = end.getTime() - start.getTime();
-      const elapsed = now.getTime() - start.getTime();
-      const remaining = end.getTime() - now.getTime();
+      const remaining = targetTime.getTime() - now.getTime();
 
       if (remaining <= 0) {
-        setTimeRemaining('Süre doldu');
-        setProgressPercent(100);
+        setTimeRemaining(isCheckedIn ? 'Süre doldu' : 'Başladı');
+        setProgressPercent(isCheckedIn ? 100 : 0);
         if (timerRef.current) {
           clearInterval(timerRef.current);
           timerRef.current = null;
         }
-        // Süre dolduğunda sadece bir kez veriyi yenile (sonsuz döngü önleme)
-        if (activeReservation && expiryEmittedRef.current !== activeReservation.id) {
+        // Sadece QR bekleme senaryosunda (reserved) veri yenile
+        if (!isCheckedIn && activeReservation && expiryEmittedRef.current !== activeReservation.id) {
           expiryEmittedRef.current = activeReservation.id;
           setTimeout(() => {
             emitEvent(AppEvents.RESERVATION_CHANGED);
@@ -202,8 +233,21 @@ export default function ReservationScreen() {
         return;
       }
 
-      // Yüzde hesapla (elapsed / total)
-      const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+      // Progress bar:
+      // - checked_in: rezervasyon aralığında (start-end) geçen süreye göre dolar
+      // - reserved: başlangıç saatine kadar geçen süreye göre dolar
+      const pct = isCheckedIn
+        ? (() => {
+            const reservationStart = new Date(activeReservation.startTime);
+            const reservationEnd = new Date(activeReservation.endTime);
+            const totalReservationMs = Math.max(1, reservationEnd.getTime() - reservationStart.getTime());
+            const elapsedSinceStart = now.getTime() - reservationStart.getTime();
+            return Math.min(100, Math.max(0, (elapsedSinceStart / totalReservationMs) * 100));
+          })()
+        : (() => {
+            const elapsed = countdownTotalMsRef.current - remaining;
+            return Math.min(100, Math.max(0, (elapsed / countdownTotalMsRef.current) * 100));
+          })();
       setProgressPercent(pct);
 
       const hours = Math.floor(remaining / (1000 * 60 * 60));
@@ -222,6 +266,139 @@ export default function ReservationScreen() {
     };
   }, [activeReservation]);
 
+  useEffect(() => {
+    const syncExtendReminderNotification = async () => {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const extendNotifications = scheduled.filter(
+        (n) => (n.content.data as any)?.type === EXTEND_REMINDER_TYPE,
+      );
+      const qrDeadlineNotifications = scheduled.filter(
+        (n) => (n.content.data as any)?.type === QR_DEADLINE_REMINDER_TYPE,
+      );
+
+      if (!activeReservation) {
+        await Promise.all([
+          ...extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+          ...qrDeadlineNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        ]);
+        return;
+      }
+
+      // QR okutma son süresine 15 dk kala hatırlatma (yalnızca RESERVED)
+      // Örn: start 15:00, qrDeadline 15:30 ise bildirim 15:15'te.
+      if (activeReservation.status === 'reserved') {
+        const now = Date.now();
+        const qrDeadlineMs = activeReservation.qrDeadline
+          ? new Date(activeReservation.qrDeadline).getTime()
+          : new Date(activeReservation.startTime).getTime() + 30 * 60 * 1000;
+        const triggerMs = qrDeadlineMs - 15 * 60 * 1000;
+        const reminderKey = `${activeReservation.id}:${qrDeadlineMs}`;
+
+        if (qrDeadlineMs <= now) {
+          await Promise.all(
+            qrDeadlineNotifications.map((n) =>
+              Notifications.cancelScheduledNotificationAsync(n.identifier),
+            ),
+          );
+        } else {
+          const existingSame = qrDeadlineNotifications.find(
+            (n) => (n.content.data as any)?.key === reminderKey,
+          );
+          if (!existingSame) {
+            await Promise.all(
+              qrDeadlineNotifications.map((n) =>
+                Notifications.cancelScheduledNotificationAsync(n.identifier),
+              ),
+            );
+            const triggerDate = new Date(Math.max(now + 1000, triggerMs));
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'QR okutmanız için son 15 dakika',
+                body: 'Rezervasyonunuz iptal olmadan QR kodunuzu okutun.',
+                sound: true,
+                data: {
+                  type: QR_DEADLINE_REMINDER_TYPE,
+                  key: reminderKey,
+                  route: '/(tabs)/reservation',
+                },
+              },
+              trigger: {
+                type: Notifications.SchedulableTriggerInputTypes.DATE,
+                date: triggerDate,
+              },
+            });
+          }
+        }
+      } else {
+        await Promise.all(
+          qrDeadlineNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+      }
+
+      if (activeReservation.status !== 'checked_in') {
+        await Promise.all(
+          extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+        return;
+      }
+
+      const now = Date.now();
+      const endMs = new Date(activeReservation.endTime).getTime();
+      const triggerMs = endMs - 15 * 60 * 1000;
+      const reminderKey = `${activeReservation.id}:${activeReservation.endTime}`;
+
+      if (endMs <= now) {
+        await Promise.all(
+          extendNotifications.map((n) =>
+            Notifications.cancelScheduledNotificationAsync(n.identifier),
+          ),
+        );
+        return;
+      }
+
+      const existingSame = extendNotifications.find(
+        (n) => (n.content.data as any)?.key === reminderKey,
+      );
+      if (existingSame) {
+        return;
+      }
+
+      await Promise.all(
+        extendNotifications.map((n) =>
+          Notifications.cancelScheduledNotificationAsync(n.identifier),
+        ),
+      );
+
+      const triggerDate = new Date(Math.max(now + 1000, triggerMs));
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Sürenizin bitmesine 15 dakika kaldı',
+          body: 'Rezervasyon sürenizi uzatmak ister misiniz?',
+          sound: true,
+          data: {
+            type: EXTEND_REMINDER_TYPE,
+            key: reminderKey,
+            route: '/(tabs)/reservation',
+          },
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: triggerDate,
+        },
+      });
+    };
+
+    void syncExtendReminderNotification();
+  }, [activeReservation?.id, activeReservation?.status, activeReservation?.endTime, activeReservation?.startTime]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchReservation();
@@ -237,19 +414,11 @@ export default function ReservationScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchReservation();
-      if (Platform.OS === 'web') {
-        window.alert('Rezervasyonunuz iptal edildi.');
-      } else {
-        Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
-      }
+      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Hata', msg);
-      }
+      showAppDialog('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -258,14 +427,7 @@ export default function ReservationScreen() {
   const handleCancel = () => {
     if (!activeReservation) return;
 
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined' && window.confirm('Rezervasyonunuzu iptal etmek istediğinize emin misiniz?')) {
-        void doCancelReservation();
-      }
-      return;
-    }
-
-    Alert.alert(
+    showAppDialog(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -276,6 +438,7 @@ export default function ReservationScreen() {
           onPress: () => void doCancelReservation(),
         },
       ],
+      'warning',
     );
   };
 
@@ -326,24 +489,26 @@ export default function ReservationScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }
       >
-        <View style={styles.emptyIcon}>
-          <Ionicons name="calendar-outline" size={80} color={colors.textMuted} />
+        <View style={styles.emptyHero}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="calendar-outline" size={80} color={colors.textMuted} />
+          </View>
+          <Text style={styles.emptyTitle}>Aktif Rezervasyon Yok</Text>
+          <Text style={styles.emptySubtitle}>
+            Henüz aktif bir rezervasyonunuz bulunmuyor.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.createButton}
+            onPress={() => router.push('/halls')}
+          >
+            <Ionicons name="add-circle" size={20} color={colors.white} />
+            <Text style={styles.createButtonText}>Rezervasyon Yap</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.emptyTitle}>Aktif Rezervasyon Yok</Text>
-        <Text style={styles.emptySubtitle}>
-          Henüz aktif bir rezervasyonunuz bulunmuyor.
-        </Text>
 
-        <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => router.push('/halls')}
-        >
-          <Ionicons name="add-circle" size={20} color={colors.white} />
-          <Text style={styles.createButtonText}>Rezervasyon Yap</Text>
-        </TouchableOpacity>
-
-        {/* İstatistikler + Geçmiş (Hesabım yerine Rezervasyonlarım) */}
-        <View style={styles.statsSection}>
+        {/* İstatistikler + Geçmiş — üstteki padding ile aynı hizada, tam genişlik */}
+        <View style={[styles.statsSection, styles.emptyMainSection]}>
           <View style={styles.sectionHeader}>
             <Ionicons name="bar-chart" size={18} color={colors.textSecondary} />
             <Text style={styles.sectionLabel}>Kütüphane İstatistiklerim</Text>
@@ -369,11 +534,14 @@ export default function ReservationScreen() {
           </View>
         </View>
 
-        <View style={styles.historySection}>
+        <View style={[styles.historySection, styles.emptyMainSection]}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
+            <Text style={styles.historyTitle} numberOfLines={1} ellipsizeMode="tail">
+              Geçmiş Rezervasyonlarım
+            </Text>
           {pastReservations.length > 3 && (
             <TouchableOpacity
+              style={styles.historyAllLinkWrap}
               onPress={() =>
                 router.push({
                   pathname: '/(tabs)/reservation-history',
@@ -391,8 +559,8 @@ export default function ReservationScreen() {
           ) : (
             pastReservationsPreview.map((res) => (
               <View key={res.id} style={styles.historyPreviewItem}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.historyPreviewTop}>
+                <View style={styles.historyPreviewTextCol}>
+                  <Text style={styles.historyPreviewTop} numberOfLines={2} ellipsizeMode="tail">
                     {res.table?.hall?.name || res.hall?.name || 'Salon'} · Masa {res.table?.tableNumber || '-'}
                   </Text>
                   <Text style={styles.historyPreviewTime}>
@@ -559,12 +727,12 @@ export default function ReservationScreen() {
 
       {/* Eylem Butonları */}
       <View style={styles.actionsContainer}>
-        {isCheckedIn && (
+        {isCheckedIn && canExtend && (
           <TouchableOpacity 
             style={[styles.actionButton, styles.extendButton]}
             onPress={() => {
               if (!activeReservation) return;
-              Alert.alert(
+              showAppDialog(
                 'Süre Uzat',
                 'Rezervasyonunuzu 1 saat uzatmak istediğinize emin misiniz?',
                 [
@@ -574,17 +742,18 @@ export default function ReservationScreen() {
                     onPress: async () => {
                       try {
                         await reservationsApi.extend(activeReservation.id);
-                        Alert.alert('Başarılı', 'Rezervasyonunuz 1 saat uzatıldı.');
+                        showAppDialog('Başarılı', 'Rezervasyonunuz 1 saat uzatıldı.');
                         fetchReservation();
                         emitEvent(AppEvents.RESERVATION_CHANGED);
                         emitEvent(AppEvents.STATS_CHANGED);
                       } catch (e: any) {
                         if (handleApiError(e)) return;
-                        Alert.alert('Hata', e?.message || 'Uzatma yapılamadı.');
+                        showAppDialog('Hata', e?.message || 'Uzatma yapılamadı.');
                       }
                     }
                   }
-                ]
+                ],
+                'warning',
               );
             }}
           >
@@ -640,9 +809,12 @@ export default function ReservationScreen() {
         <View style={{ height: spacing.md }} />
 
         <View style={styles.historyHeader}>
-          <Text style={styles.historyTitle}>Geçmiş Rezervasyonlarım</Text>
+          <Text style={styles.historyTitle} numberOfLines={1} ellipsizeMode="tail">
+            Geçmiş Rezervasyonlarım
+          </Text>
           {pastReservations.length > 3 && (
           <TouchableOpacity
+            style={styles.historyAllLinkWrap}
             onPress={() =>
               router.push({
                 pathname: '/(tabs)/reservation-history',
@@ -660,8 +832,8 @@ export default function ReservationScreen() {
         ) : (
           pastReservationsPreview.map((res) => (
             <View key={res.id} style={styles.historyPreviewItem}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.historyPreviewTop}>
+              <View style={styles.historyPreviewTextCol}>
+                <Text style={styles.historyPreviewTop} numberOfLines={2} ellipsizeMode="tail">
                   {res.table?.hall?.name || res.hall?.name || 'Salon'} · Masa {res.table?.tableNumber || '-'}
                 </Text>
                 <Text style={styles.historyPreviewTime}>
@@ -705,11 +877,20 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
     paddingTop: spacing.lg,
     paddingBottom: spacing.lg,
+  },
+  emptyHero: {
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  /** Boş rezervasyon ekranında istatistik + geçmiş, ScrollView içinde tam genişlik (Kütüphane İstatistikleri ile aynı hat) */
+  emptyMainSection: {
+    alignSelf: 'stretch',
+    width: '100%',
   },
   emptyIcon: {
     marginBottom: 20,
@@ -1007,15 +1188,21 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
+    width: '100%',
   },
   statCard: {
-    flexBasis: '47%',
+    flexGrow: 1,
+    flexBasis: 0,
+    minWidth: '46%',
+    maxWidth: '100%',
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
@@ -1038,6 +1225,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.lg,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   historyHeader: {
     flexDirection: 'row',
@@ -1047,19 +1236,24 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   historyTitle: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
   },
-  historyAllLink: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
+  historyAllLinkWrap: {
+    flexShrink: 0,
     borderWidth: 1,
     borderColor: colors.primary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
+  },
+  historyAllLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
     textAlign: 'center',
   },
   historyEmpty: {
@@ -1069,6 +1263,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   historyPreviewItem: {
+    alignSelf: 'stretch',
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
@@ -1078,6 +1273,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
+    width: '100%',
+  },
+  historyPreviewTextCol: {
+    flex: 1,
+    minWidth: 0,
   },
   historyPreviewTop: {
     fontSize: 13,
@@ -1095,6 +1295,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   historyPreviewBadge: {
+    flexShrink: 0,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
