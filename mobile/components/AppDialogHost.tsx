@@ -59,7 +59,9 @@ export default function AppDialogHost() {
         <View style={[styles.card, { width: CARD_MAX }]}>
           <View style={[styles.accentBar, { backgroundColor: accent }]} />
           <View style={styles.cardInner}>
-            <Text style={styles.title}>{args.title}</Text>
+            <Text style={message.length > 0 ? styles.title : styles.message}>
+              {args.title}
+            </Text>
             {message.length > 0 ? <Text style={styles.message}>{args.message}</Text> : null}
             <View
               style={[
