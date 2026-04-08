@@ -18,6 +18,10 @@ export enum ReservationLogEvent {
   NO_SHOW = 'no_show',
   QR_WARNING = 'qr_warning',
   EXTEND_REMINDER = 'extend_reminder',
+  // Backward compatibility for existing DB rows from older releases.
+  VACATE_SEAT_REMINDER = 'vacate_seat_reminder',
+  // Backward compatibility for legacy extension flow logs.
+  EXTENSION_DECLINED = 'extension_declined',
   LEAVE_WARNING = 'leave_warning',
 }
 
