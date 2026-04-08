@@ -1,12 +1,8 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  ConflictException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, MoreThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { UserSession } from '../../database/entities';
 import { UsersService } from '../users/users.service';
@@ -37,19 +33,9 @@ export class AuthService {
       throw new UnauthorizedException('Öğrenci numarası veya şifre hatalı.');
     }
 
-    // Tek aktif oturum kontrolü
-    const existingSession = await this.sessionRepository.findOne({
-      where: {
-        userId: user.id,
-        expiresAt: MoreThan(new Date()),
-      },
-    });
-
-    if (existingSession) {
-      throw new ConflictException(
-        'Bu hesapta zaten aktif bir oturum var. Lütfen önce mevcut oturumu kapatın.',
-      );
-    }
+    // Tek aktif oturum: önceki kayıtları sil (çıkış yapılmadan uygulama kapanırsa / token silinirse
+    // sunucuda oturum kalır; yeni girişte takılmayı önlemek için burada temizlenir).
+    await this.sessionRepository.delete({ userId: user.id });
 
     // JWT oluştur
     const jti = uuidv4();

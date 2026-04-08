@@ -75,7 +75,13 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Bir hata oluştu', status: response.status }));
+      const errorText = await response.text();
+      let error: { message?: string | string[]; status?: number };
+      try {
+        error = errorText ? JSON.parse(errorText) : { message: 'Bir hata oluştu', status: response.status };
+      } catch {
+        error = { message: errorText || 'Bir hata oluştu', status: response.status };
+      }
 
       if (response.status === 401) {
         const path = endpoint.split('?')[0];
@@ -120,7 +126,15 @@ class ApiClient {
       throw new ApiError(msg, response.status);
     }
 
-    return response.json();
+    const okText = await response.text();
+    if (!okText.trim()) {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(okText) as T;
+    } catch {
+      return undefined as T;
+    }
   }
 
   async get<T>(endpoint: string): Promise<T> {

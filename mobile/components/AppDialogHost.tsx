@@ -4,7 +4,7 @@ import {
   View,
   Text,
   StyleSheet,
-  Pressable,
+  TouchableOpacity,
   Dimensions,
   Platform,
 } from 'react-native';
@@ -29,14 +29,17 @@ export default function AppDialogHost() {
 
   const close = useCallback(() => setArgs(null), []);
 
-  const onButtonPress = useCallback(
-    (btn: AppDialogButton) => {
-      const fn = btn.onPress;
-      if (fn) fn();
-      setArgs(null);
-    },
-    [],
-  );
+  const onButtonPress = useCallback((btn: AppDialogButton) => {
+    const fn = btn.onPress;
+    if (fn) {
+      try {
+        fn();
+      } catch (e) {
+        console.warn('AppDialogHost onPress', e);
+      }
+    }
+    setArgs(null);
+  }, []);
 
   if (!args) {
     return null;
@@ -54,6 +57,10 @@ export default function AppDialogHost() {
       animationType="fade"
       statusBarTranslucent
       onRequestClose={close}
+      {...Platform.select({
+        ios: { presentationStyle: 'overFullScreen' as const },
+        default: {},
+      })}
     >
       <View style={styles.backdrop}>
         <View style={[styles.card, { width: CARD_MAX }]}>
@@ -70,13 +77,13 @@ export default function AppDialogHost() {
               ]}
             >
               {buttons.map((btn, i) => (
-                <Pressable
+                <TouchableOpacity
                   key={`${btn.text}-${i}`}
-                  style={({ pressed }) => [
+                  activeOpacity={0.88}
+                  style={[
                     styles.buttonBase,
                     buttons.length > 1 ? styles.buttonFlex : styles.buttonFull,
                     buttonVariantStyle(btn.style),
-                    pressed && styles.buttonPressed,
                   ]}
                   onPress={() => onButtonPress(btn)}
                 >
@@ -86,7 +93,7 @@ export default function AppDialogHost() {
                   >
                     {btn.text}
                   </Text>
-                </Pressable>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -186,9 +193,6 @@ const styles = StyleSheet.create({
   },
   buttonFull: {
     width: '100%',
-  },
-  buttonPressed: {
-    opacity: 0.88,
   },
   buttonLabel: {
     fontSize: 15,

@@ -4,6 +4,7 @@ import {
   CreateReservationDto,
   CheckInDto,
   UserReservationStatus,
+  ValidateQrResponse,
 } from '../types';
 
 export const reservationsApi = {
@@ -34,6 +35,10 @@ export const reservationsApi = {
   // QR kod ile check-in yap (aktif RESERVED rezervasyon için)
   checkIn: (data: CheckInDto) =>
     apiClient.post('/reservations/check-in', data),
+
+  // QR kodun sistemde gecerli bir masaya ait olup olmadigini dogrula
+  validateQr: (qrCode: string) =>
+    apiClient.post<ValidateQrResponse>('/reservations/validate-qr', { qrCode }),
 
   // Rezervasyonu iptal et (backend DELETE + optional reason body)
   cancel: (id: string, reason?: string) =>

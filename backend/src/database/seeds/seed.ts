@@ -1,15 +1,28 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../app.module';
 import { DataSource } from 'typeorm';
+import * as fs from 'node:fs/promises';
 import { User, UserRole } from '../entities/user.entity';
 import { OperatingSchedule, ScheduleType } from '../entities/operating-schedule.entity';
 import { Hall } from '../entities/hall.entity';
 import { Table, TableStatus } from '../entities/table.entity';
 import { hashPassword } from '../../modules/auth/auth.utils';
 
-// Selcuk Universitesi Merkez Kutuphane referans koordinatlari
-const LIBRARY_CENTER_LATITUDE = 38.02398;
-const LIBRARY_CENTER_LONGITUDE = 32.51215;
+// Salon gruplarina gore referans koordinatlari
+const HALL_GROUP_COORDINATES = {
+  AD: { latitude: 38.02394, longitude: 32.51194 }, // A-D
+  BE: { latitude: 38.02417, longitude: 32.51221 }, // B-E
+  CF: { latitude: 38.02439, longitude: 32.51193 }, // C-F
+} as const;
+
+function getHallCenterCoordinates(hallName: string): { latitude: number; longitude: number } {
+  const code = hallName.trim().charAt(0).toUpperCase();
+  if (code === 'A' || code === 'D') return HALL_GROUP_COORDINATES.AD;
+  if (code === 'B' || code === 'E') return HALL_GROUP_COORDINATES.BE;
+  if (code === 'C' || code === 'F') return HALL_GROUP_COORDINATES.CF;
+  return HALL_GROUP_COORDINATES.AD;
+}
+
 const DEFAULT_ALLOWED_RADIUS_METERS = 50;
 const HALL_TABLE_COUNTS: Array<{ code: string; count: number }> = [
   { code: 'A', count: 104 },
@@ -19,6 +32,31 @@ const HALL_TABLE_COUNTS: Array<{ code: string; count: number }> = [
   { code: 'E', count: 100 },
   { code: 'F', count: 104 },
 ];
+const QR_CSV_PATH = process.env.QR_CSV_PATH || 'C:/Users/Kaan/Desktop/qr_codes_all.csv';
+
+async function loadQrMapFromCsv(): Promise<Map<string, string>> {
+  const qrMap = new Map<string, string>();
+  try {
+    const raw = await fs.readFile(QR_CSV_PATH, 'utf8');
+    const lines = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+
+    for (const line of lines.slice(1)) {
+      const parts = line.split(',');
+      if (parts.length < 3) continue;
+      const tableNumber = parts[1].trim();
+      const qrCode = parts.slice(2).join(',').trim();
+      if (tableNumber && qrCode) {
+        qrMap.set(tableNumber, qrCode);
+      }
+    }
+  } catch {
+    console.warn(`  [UYARI] QR CSV okunamadi: ${QR_CSV_PATH}. Seed fallback QR uretecek.`);
+  }
+  return qrMap;
+}
 
 const SEED_USERS = [
   {
@@ -57,6 +95,7 @@ async function seed() {
   const app = await NestFactory.createApplicationContext(AppModule);
   const dataSource = app.get(DataSource);
   const userRepo = dataSource.getRepository(User);
+  const csvQrMap = await loadQrMapFromCsv();
 
   console.log('Seed başlatılıyor...\n');
 
@@ -112,14 +151,15 @@ async function seed() {
   const halls = await hallRepo.find();
 
   for (const hall of halls) {
-    hall.centerLatitude = LIBRARY_CENTER_LATITUDE;
-    hall.centerLongitude = LIBRARY_CENTER_LONGITUDE;
+    const center = getHallCenterCoordinates(hall.name);
+    hall.centerLatitude = center.latitude;
+    hall.centerLongitude = center.longitude;
     hall.allowedRadiusMeters = DEFAULT_ALLOWED_RADIUS_METERS;
 
     await hallRepo.save(hall);
     console.log(
       `  [GUNCELLENDI] Salon "${hall.name}" koordinatlari set edildi ` +
-        `(${LIBRARY_CENTER_LATITUDE}, ${LIBRARY_CENTER_LONGITUDE}, ${DEFAULT_ALLOWED_RADIUS_METERS}m)`,
+        `(${center.latitude}, ${center.longitude}, ${DEFAULT_ALLOWED_RADIUS_METERS}m)`,
     );
   }
 
@@ -134,6 +174,7 @@ async function seed() {
     let hall = await hallRepo.findOne({ where: { name: hallName } });
 
     if (!hall) {
+      const center = getHallCenterCoordinates(hallName);
       hall = hallRepo.create({
         name: hallName,
         floor: 1,
@@ -143,17 +184,18 @@ async function seed() {
         capacity: count,
         isActive: true,
         displayOrder: index + 1,
-        centerLatitude: LIBRARY_CENTER_LATITUDE,
-        centerLongitude: LIBRARY_CENTER_LONGITUDE,
+        centerLatitude: center.latitude,
+        centerLongitude: center.longitude,
         allowedRadiusMeters: DEFAULT_ALLOWED_RADIUS_METERS,
       });
       hall = await hallRepo.save(hall);
       console.log(`  [OLUSTURULDU] Salon: ${hallName} (kapasite: ${count})`);
     } else {
+      const center = getHallCenterCoordinates(hallName);
       hall.capacity = count;
       hall.isActive = true;
-      hall.centerLatitude = LIBRARY_CENTER_LATITUDE;
-      hall.centerLongitude = LIBRARY_CENTER_LONGITUDE;
+      hall.centerLatitude = center.latitude;
+      hall.centerLongitude = center.longitude;
       hall.allowedRadiusMeters = DEFAULT_ALLOWED_RADIUS_METERS;
       hall = await hallRepo.save(hall);
       console.log(`  [GUNCELLENDI] Salon: ${hallName} (kapasite: ${count})`);
@@ -180,7 +222,9 @@ async function seed() {
         width: 52,
         height: 52,
         rotation: 0,
-        qrCode: `SELCUK_LIB_${hall.id.slice(0, 8)}_${tableNumber.replace(/\s+/g, '')}_${Math.random().toString(36).slice(2, 10)}`,
+        qrCode:
+          csvQrMap.get(tableNumber) ||
+          `SELCUK_LIB_${hall.id.slice(0, 8)}_${tableNumber.replace(/\s+/g, '')}_${Math.random().toString(36).slice(2, 10)}`,
         status: TableStatus.AVAILABLE,
         isActive: true,
       });

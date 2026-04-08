@@ -79,6 +79,13 @@ export interface CheckInDto {
   qrCode: string;
   latitude: number;
   longitude: number;
+  accuracyMeters?: number;
+}
+
+export interface ValidateQrResponse {
+  isValid: boolean;
+  table?: Table;
+  message?: string;
 }
 
 export interface UserReservationStatus {

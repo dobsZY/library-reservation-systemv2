@@ -4,9 +4,9 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity,
-  Pressable,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -134,21 +134,21 @@ export default function HomeScreen() {
     fetchData();
   }, [fetchData]);
 
-  const doCancelReservation = async () => {
-    if (!activeReservation) return;
+  const doCancelReservation = async (reservationId: string) => {
+    if (!reservationId) return;
     setCancelling(true);
     try {
-      await reservationsApi.cancel(activeReservation.id);
+      await reservationsApi.cancel(reservationId);
       setHasActiveReservation(false);
       setActiveReservation(null);
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchData();
-      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
+      Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      showAppDialog('Hata', msg);
+      Alert.alert('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -176,8 +176,9 @@ export default function HomeScreen() {
 
   const handleCancelReservation = () => {
     if (!activeReservation) return;
+    const reservationId = activeReservation.id;
 
-    showAppDialog(
+    Alert.alert(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -185,28 +186,9 @@ export default function HomeScreen() {
         {
           text: 'Evet, İptal Et',
           style: 'destructive',
-          onPress: () => void doCancelReservation(),
+          onPress: () => void doCancelReservation(reservationId),
         },
       ],
-      'warning',
-    );
-  };
-
-  const handleEndAtScheduledTime = () => {
-    if (!activeReservation) return;
-    const blockedByNext = extensionBlockedByNextReservation;
-    showAppDialog(
-      'Rezervasyonu Sonlandırmak İstediğinize Emin Misiniz?',
-      '',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sonlandır',
-          style: 'destructive',
-          onPress: () => void doAcknowledgeScheduledEnd(blockedByNext),
-        },
-      ],
-      'warning',
     );
   };
 
@@ -255,6 +237,8 @@ export default function HomeScreen() {
   return (
     <ScrollView 
       style={styles.container}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
       }
@@ -364,42 +348,24 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          {activeReservation.status === 'reserved' && (
-            <Pressable
-              style={styles.activeButton}
-              onPress={handleCancelReservation}
-              disabled={cancelling}
-              hitSlop={12}
-              android_ripple={{ color: 'rgba(220,38,38,0.10)' }}
-            >
-              {cancelling ? (
-                <ActivityIndicator size="small" color={colors.danger} />
-              ) : (
-                <>
-                  <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
-                  <Text style={styles.activeButtonText}>Rezervasyonu İptal Et</Text>
-                </>
-              )}
-            </Pressable>
-          )}
-          {activeReservation.status === 'checked_in' && !activeReservation.extensionDeclinedAt && (
-            <Pressable
-              style={styles.activeButton}
-              onPress={handleEndAtScheduledTime}
-              disabled={endingSession}
-              hitSlop={12}
-              android_ripple={{ color: 'rgba(220,38,38,0.10)' }}
-            >
-              {endingSession ? (
-                <ActivityIndicator size="small" color={colors.danger} />
-              ) : (
-                <>
-                  <Ionicons name="stop-circle-outline" size={18} color={colors.danger} />
-                  <Text style={styles.activeButtonText}>Rezervasyonu Sonlandır</Text>
-                </>
-              )}
-            </Pressable>
-          )}
+          <TouchableOpacity
+            style={styles.activeButton}
+            onPress={handleCancelReservation}
+            disabled={cancelling}
+            activeOpacity={0.75}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel="Rezervasyonu iptal et"
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color={colors.danger} />
+            ) : (
+              <>
+                <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
+                <Text style={styles.activeButtonText}>Rezervasyonu İptal Et</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
       )}
 
@@ -766,6 +732,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: spacing.md,
+    minHeight: 48,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

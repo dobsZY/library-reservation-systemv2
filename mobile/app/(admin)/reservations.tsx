@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
@@ -116,7 +117,7 @@ export default function AdminReservationsScreen() {
       res.status === 'reserved' || res.status === 'checked_in';
 
     if (!isActive) {
-      showAppDialog('Bilgi', 'Bu rezervasyon iptal edilemez.');
+      Alert.alert('Bilgi', 'Bu rezervasyon iptal edilemez.');
       return;
     }
 
@@ -126,29 +127,24 @@ export default function AdminReservationsScreen() {
       setCancelLoading(res.id);
       try {
         await adminApi.cancelReservation(res.id);
-        showAppDialog('Başarılı', 'Rezervasyon iptal edildi.');
+        Alert.alert('Başarılı', 'Rezervasyon iptal edildi.');
         fetchReservations();
       } catch (e: any) {
         if (handleApiError(e)) return;
-        showAppDialog('Hata', e?.message || 'İşlem başarısız.');
+        Alert.alert('Hata', e?.message || 'İşlem başarısız.');
       } finally {
         setCancelLoading(null);
       }
     };
 
-    showAppDialog(
-      'Rezervasyonu İptal Et',
-      message,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'İptal Et',
-          style: 'destructive',
-          onPress: () => void doCancel(),
-        },
-      ],
-      'warning',
-    );
+    Alert.alert('Rezervasyonu İptal Et', message, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'İptal Et',
+        style: 'destructive',
+        onPress: () => void doCancel(),
+      },
+    ]);
   };
 
   const renderItem = ({ item }: { item: AdminReservation }) => {

@@ -7,7 +7,7 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
-  Platform,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -531,21 +531,21 @@ export default function ReservationScreen() {
     fetchReservation();
   }, [fetchReservation]);
 
-  const doCancelReservation = async () => {
-    if (!activeReservation) return;
+  const doCancelReservation = async (reservationId: string) => {
+    if (!reservationId) return;
     setCancelling(true);
     try {
-      await reservationsApi.cancel(activeReservation.id);
+      await reservationsApi.cancel(reservationId);
       setHasActiveReservation(false);
       setActiveReservation(null);
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchReservation();
-      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
+      Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      showAppDialog('Hata', msg);
+      Alert.alert('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -553,8 +553,9 @@ export default function ReservationScreen() {
 
   const handleCancel = () => {
     if (!activeReservation) return;
+    const reservationId = activeReservation.id;
 
-    showAppDialog(
+    Alert.alert(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -562,50 +563,9 @@ export default function ReservationScreen() {
         {
           text: 'Evet, İptal Et',
           style: 'destructive',
-          onPress: () => void doCancelReservation(),
+          onPress: () => void doCancelReservation(reservationId),
         },
       ],
-      'warning',
-    );
-  };
-
-  const doAcknowledgeScheduledEnd = async (blockedByNext: boolean) => {
-    if (!activeReservation) return;
-    setEndingSession(true);
-    try {
-      await reservationsApi.acknowledgeScheduledEnd(activeReservation.id);
-      emitEvent(AppEvents.RESERVATION_CHANGED);
-      emitEvent(AppEvents.STATS_CHANGED);
-      await fetchReservation();
-      const infoMessage = blockedByNext
-        ? 'Rezervasyonunuz Başarılı Şekilde Sonlandırıldı'
-        : 'Rezervasyonunuzu uzatma talebinde bulunmadınız.Rezervasyonunuz başarıyla sonlandırılmıştır.';
-      showAppDialog('Bilgi', infoMessage);
-    } catch (e: any) {
-      if (handleApiError(e)) return;
-      const msg =
-        typeof e?.message === 'string' ? e.message : 'İşlem gerçekleştirilemedi.';
-      showAppDialog('Hata', msg);
-    } finally {
-      setEndingSession(false);
-    }
-  };
-
-  const handleEndAtScheduledTime = () => {
-    if (!activeReservation) return;
-    const blockedByNext = extensionBlockedByNextReservation;
-    showAppDialog(
-      'Rezervasyonu Sonlandırmak İstediğinize Emin Misiniz?',
-      '',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Sonlandır',
-          style: 'destructive',
-          onPress: () => void doAcknowledgeScheduledEnd(blockedByNext),
-        },
-      ],
-      'warning',
     );
   };
 
