@@ -78,8 +78,26 @@ const SEED_USERS = [
     password: 'Student123!',
   },
   {
+    studentNumber: '200000004',
+    fullName: 'Zeynep Yılmaz',
+    role: UserRole.STUDENT,
+    password: 'Student123!',
+  },
+  {
+    studentNumber: '200000005',
+    fullName: 'Can Öztürk',
+    role: UserRole.STUDENT,
+    password: 'Student123!',
+  },
+  {
     studentNumber: 'admin001',
     fullName: 'Sistem Yöneticisi',
+    role: UserRole.ADMIN,
+    password: 'Admin123!',
+  },
+  {
+    studentNumber: 'admin002',
+    fullName: 'Yardımcı Yönetici',
     role: UserRole.ADMIN,
     password: 'Admin123!',
   },
@@ -239,7 +257,10 @@ async function seed() {
   console.log('  Ogrenci:  200000001 / Student123!');
   console.log('  Ogrenci:  200000002 / Student123!');
   console.log('  Ogrenci:  200000003 / Student123!');
+  console.log('  Ogrenci:  200000004 / Student123!');
+  console.log('  Ogrenci:  200000005 / Student123!');
   console.log('  Admin:    admin001  / Admin123!');
+  console.log('  Admin:    admin002  / Admin123!');
   console.log('  Personel: staff001  / Staff123!');
 
   await app.close();
