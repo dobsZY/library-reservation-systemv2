@@ -53,10 +53,14 @@ export interface AdminOverview {
   occupancyRate: number;
 }
 
+export type AdminUserRole = 'student' | 'staff' | 'admin';
+
 export const adminApi = {
   getUsers: () => apiClient.get<AdminUser[]>('/admin/users'),
   forceLogout: (userId: string) =>
     apiClient.post<{ message: string }>(`/admin/users/${userId}/force-logout`, {}),
+  updateUserRole: (userId: string, role: AdminUserRole) =>
+    apiClient.patch<AdminUser>(`/admin/users/${userId}/role`, { role }),
 
   getReservations: (status?: string) => {
     const qs = status ? `?status=${status}` : '';

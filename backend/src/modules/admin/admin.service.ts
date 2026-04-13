@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import {
   User,
+  UserRole,
   UserSession,
   Reservation,
   ReservationStatus,
@@ -58,6 +59,41 @@ export class AdminService {
     const user = await this.userRepository.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('Kullanıcı bulunamadı.');
     await this.sessionRepository.delete({ userId });
+  }
+
+  async updateUserRole(targetUserId: string, newRole: UserRole, actorUserId: string): Promise<any> {
+    const target = await this.userRepository.findOne({ where: { id: targetUserId } });
+    if (!target) throw new NotFoundException('Kullanıcı bulunamadı.');
+
+    if (targetUserId === actorUserId) {
+      throw new BadRequestException('Kendi rolünüzü değiştiremezsiniz.');
+    }
+
+    if (target.role === UserRole.ADMIN && newRole !== UserRole.ADMIN) {
+      const adminCount = await this.userRepository.count({ where: { role: UserRole.ADMIN } });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Sistemde en az bir yönetici kalmalıdır.');
+      }
+    }
+
+    if (target.role === newRole) {
+      throw new BadRequestException('Kullanıcı zaten bu role sahip.');
+    }
+
+    target.role = newRole;
+    await this.userRepository.save(target);
+    await this.sessionRepository.delete({ userId: targetUserId });
+
+    const hasActiveSession = false;
+    return {
+      id: target.id,
+      studentNumber: target.studentNumber,
+      fullName: target.fullName,
+      role: target.role,
+      isActive: target.isActive,
+      hasActiveSession,
+      createdAt: target.createdAt,
+    };
   }
 
   // ── Reservations ───────────────────────────────────────────

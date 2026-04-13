@@ -16,6 +16,9 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { AdminService } from './admin.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { RequestUser } from '../auth/decorators/current-user.decorator';
+import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -38,6 +41,16 @@ export class AdminController {
   async forceLogout(@Param('id', ParseUUIDPipe) id: string) {
     await this.adminService.forceLogout(id);
     return { message: 'Kullanıcı oturumları sonlandırıldı.' };
+  }
+
+  @Patch('users/:id/role')
+  @ApiOperation({ summary: 'Kullanıcı rolünü güncelle (admin)' })
+  async updateUserRole(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateUserRoleDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.adminService.updateUserRole(id, dto.role, actor.id);
   }
 
   // ── Reservations ───────────────────────────────────────────
