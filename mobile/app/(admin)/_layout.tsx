@@ -3,30 +3,59 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
 import { colors } from '../../constants/theme';
 
+/** Üst bar / marka kırmızısı */
+const ADMIN_HEADER_RED = '#DC2626';
+/** Açık kırmızı zemin üzerinde okunaklı ikon ve sekme yazısı */
+const ADMIN_TAB_ACTIVE = '#991B1B';
+
+const TAB_ICON_BOX = 40;
+
+function AdminTabBarIcon({
+  name,
+  nameOutline,
+  focused,
+  inactiveColor,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  nameOutline: keyof typeof Ionicons.glyphMap;
+  focused: boolean;
+  inactiveColor: string;
+}) {
+  const iconName = focused ? name : nameOutline;
+  const iconColor = focused ? ADMIN_TAB_ACTIVE : inactiveColor;
+
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Ionicons name={iconName} size={24} color={iconColor} />
+    </View>
+  );
+}
+
 export default function AdminTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#DC2626',
+        tabBarActiveTintColor: ADMIN_TAB_ACTIVE,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopWidth: 0,
-          height: 70,
-          paddingBottom: 10,
-          paddingTop: 10,
+          height: 72,
+          paddingBottom: 8,
+          paddingTop: 6,
           ...styles.tabBarShadow,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginTop: 4,
+          marginTop: 2,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 2,
+          minWidth: 0,
         },
         headerStyle: {
-          backgroundColor: '#DC2626',
+          backgroundColor: ADMIN_HEADER_RED,
           elevation: 0,
           shadowOpacity: 0,
         },
@@ -44,21 +73,27 @@ export default function AdminTabLayout() {
           title: 'Panel',
           headerTitle: 'Yönetici Paneli',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="stats-chart"
+              nameOutline="stats-chart-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="reservations"
         options={{
-          title: 'Rezervasyonlar',
+          title: 'Rezervasyon',
           headerTitle: 'Rezervasyon Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="calendar"
+              nameOutline="calendar-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
@@ -68,9 +103,12 @@ export default function AdminTabLayout() {
           title: 'Salonlar',
           headerTitle: 'Salon & Masa Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'grid' : 'grid-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="grid"
+              nameOutline="grid-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
@@ -80,9 +118,12 @@ export default function AdminTabLayout() {
           title: 'Kullanıcılar',
           headerTitle: 'Kullanıcı Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="people"
+              nameOutline="people-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
@@ -98,9 +139,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  activeTab: {
-    backgroundColor: '#FEE2E2',
-    padding: 8,
+  iconWrap: {
+    width: TAB_ICON_BOX,
+    height: TAB_ICON_BOX,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 12,
+    overflow: 'visible',
+  },
+  iconWrapActive: {
+    backgroundColor: '#FEE2E2',
   },
 });
