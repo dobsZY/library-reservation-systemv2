@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   CalendarDays, MapPin, Clock, XCircle, Loader2, RefreshCw,
 } from 'lucide-react';
@@ -28,11 +29,22 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function initialFilterFromSearch(searchParams: URLSearchParams) {
+  const q = searchParams.get('filter');
+  return q && FILTERS.some((f) => f.key === q) ? q : '';
+}
+
 export default function AdminReservationsPage() {
+  const [searchParams] = useSearchParams();
   const [reservations, setReservations] = useState<AdminReservation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+  const [filter, setFilter] = useState(() => initialFilterFromSearch(searchParams));
   const [cancelLoading, setCancelLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    const next = initialFilterFromSearch(searchParams);
+    if (next) setFilter(next);
+  }, [searchParams]);
 
   const fetchReservations = useCallback(async () => {
     try {

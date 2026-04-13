@@ -201,20 +201,25 @@ export class AdminService {
     totalReservations: number;
     activeReservations: number;
     noShowCount: number;
+    cancelledReservations: number;
     occupancyRate: number;
   }> {
     const now = new Date();
 
-    const [totalUsers, totalReservations, activeReservations, noShowCount] = await Promise.all([
-      this.userRepository.count(),
-      this.reservationRepository.count(),
-      this.reservationRepository.count({
-        where: { status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]) },
-      }),
-      this.reservationRepository.count({
-        where: { status: In([ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED]) },
-      }),
-    ]);
+    const [totalUsers, totalReservations, activeReservations, noShowCount, cancelledReservations] =
+      await Promise.all([
+        this.userRepository.count(),
+        this.reservationRepository.count(),
+        this.reservationRepository.count({
+          where: { status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]) },
+        }),
+        this.reservationRepository.count({
+          where: { status: In([ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED]) },
+        }),
+        this.reservationRepository.count({
+          where: { status: ReservationStatus.CANCELLED },
+        }),
+      ]);
 
     const totalTables = await this.tableRepository.count({ where: { isActive: true } });
     const occupiedCount = await this.tableLockRepository
@@ -226,6 +231,13 @@ export class AdminService {
 
     const occupancyRate = totalTables > 0 ? (occupiedCount / totalTables) * 100 : 0;
 
-    return { totalUsers, totalReservations, activeReservations, noShowCount, occupancyRate };
+    return {
+      totalUsers,
+      totalReservations,
+      activeReservations,
+      noShowCount,
+      cancelledReservations,
+      occupancyRate,
+    };
   }
 }

@@ -15,6 +15,9 @@ import {
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../../database/entities';
 import { AdminService } from './admin.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
@@ -22,20 +25,21 @@ import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, AdminGuard)
 @Controller('admin')
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
-  // ── Users ──────────────────────────────────────────────────
+  // ── Users (yalnızca admin) ───────────────────────────────────
 
   @Get('users')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Tüm kullanıcılar (admin)' })
   async getUsers() {
     return this.adminService.getUsers();
   }
 
   @Post('users/:id/force-logout')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Kullanıcı oturumlarını zorla sonlandır' })
   async forceLogout(@Param('id', ParseUUIDPipe) id: string) {
@@ -44,6 +48,7 @@ export class AdminController {
   }
 
   @Patch('users/:id/role')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Kullanıcı rolünü güncelle (admin)' })
   async updateUserRole(
     @Param('id', ParseUUIDPipe) id: string,
@@ -56,13 +61,16 @@ export class AdminController {
   // ── Reservations ───────────────────────────────────────────
 
   @Get('reservations')
-  @ApiOperation({ summary: 'Tüm rezervasyonlar (admin)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Tüm rezervasyonlar (yönetici / personel, salt okuma listesi)' })
   @ApiQuery({ name: 'status', required: false, description: 'active|cancelled|completed|no_show|expired' })
   async getReservations(@Query('status') status?: string) {
     return this.adminService.getReservations(status);
   }
 
   @Delete('reservations/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Rezervasyonu admin olarak iptal et' })
   async adminCancelReservation(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.adminCancelReservation(id);
@@ -71,18 +79,23 @@ export class AdminController {
   // ── Halls / Tables ─────────────────────────────────────────
 
   @Get('halls')
-  @ApiOperation({ summary: 'Salon listesi (admin)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Salon listesi (yönetici / personel)' })
   async getHalls() {
     return this.adminService.getHalls();
   }
 
   @Get('halls/:id/tables')
-  @ApiOperation({ summary: 'Salon masaları (admin)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Salon masaları (yönetici / personel)' })
   async getHallTables(@Param('id', ParseUUIDPipe) id: string) {
     return this.adminService.getHallTables(id);
   }
 
   @Patch('tables/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Masa bilgilerini güncelle (admin)' })
   async updateTable(
     @Param('id', ParseUUIDPipe) id: string,
@@ -94,7 +107,9 @@ export class AdminController {
   // ── Statistics ─────────────────────────────────────────────
 
   @Get('statistics/overview')
-  @ApiOperation({ summary: 'Genel istatistik özeti (admin)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Genel istatistik özeti (yönetici / personel)' })
   async getOverview() {
     return this.adminService.getOverview();
   }
