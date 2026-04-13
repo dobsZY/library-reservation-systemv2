@@ -16,14 +16,21 @@ import { adminTheme, colors, spacing, borderRadius, shadows } from '../../consta
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
-type AdminCard = {
+type DashboardCard = {
   key: string;
   title: string;
   value: number | string;
   icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  route: string;
+  accent: string;
+  iconBg: string;
+  /** Varsayılan: masa kontrol; qr-desk: QR tarama sekmesi */
+  target?: 'masa-kontrol' | 'qr-desk';
 };
+
+const MASA_KONTROL_PATH = '/masa-kontrol';
+
+const PURPLE_QR = '#7C3AED';
+const PURPLE_QR_BG = '#EDE9FE';
 
 export default function AdminHomeScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -60,7 +67,6 @@ export default function AdminHomeScreen() {
     try {
       await logout();
     } finally {
-      // Alert onPress / web confirm sonrası replace her koşulda çalışsın
       goToLogin();
     }
   };
@@ -91,39 +97,48 @@ export default function AdminHomeScreen() {
     );
   }
 
-  const cards: AdminCard[] = overview
+  const cards: DashboardCard[] = overview
     ? [
         {
           key: 'users',
           title: 'Toplam Kullanıcı',
           value: overview.totalUsers,
           icon: 'people',
-          color: '#3B82F6',
-          route: '/(admin)/users',
+          accent: '#3B82F6',
+          iconBg: '#DBEAFE',
         },
         {
           key: 'reservations-active',
           title: 'Aktif Rezervasyon',
           value: overview.activeReservations,
           icon: 'time',
-          color: '#22C55E',
-          route: '/(admin)/reservations?filter=active',
+          accent: '#22C55E',
+          iconBg: '#DCFCE7',
         },
         {
           key: 'reservations-expired',
           title: 'Süresi Dolmuş',
           value: overview.noShowCount,
           icon: 'alert-circle',
-          color: '#EF4444',
-          route: '/(admin)/reservations?filter=expired',
+          accent: '#EF4444',
+          iconBg: '#FEE2E2',
         },
         {
           key: 'occupancy',
           title: 'Doluluk Oranı',
           value: `%${overview.occupancyRate.toFixed(1)}`,
           icon: 'bar-chart',
-          color: '#F59E0B',
-          route: '/(admin)/halls',
+          accent: '#F59E0B',
+          iconBg: '#FEF3C7',
+        },
+        {
+          key: 'qr-desk',
+          title: 'Masa QR tara',
+          value: '',
+          icon: 'qr-code',
+          accent: PURPLE_QR,
+          iconBg: PURPLE_QR_BG,
+          target: 'qr-desk',
         },
       ]
     : [];
@@ -140,14 +155,34 @@ export default function AdminHomeScreen() {
             <TouchableOpacity
               key={c.key}
               style={styles.card}
-              activeOpacity={0.8}
-              onPress={() => router.push(c.route as any)}
+              activeOpacity={0.88}
+              onPress={() =>
+                router.push(
+                  (c.target === 'qr-desk' ? '/(admin)/qr-desk' : MASA_KONTROL_PATH) as any,
+                )
+              }
+              accessibilityRole="button"
+              accessibilityLabel={c.title}
             >
-              <View style={[styles.iconCircle, { backgroundColor: c.color + '20' }]}>
-                <Ionicons name={c.icon} size={24} color={c.color} />
+              <View
+                style={[
+                  styles.iconCircle,
+                  c.target === 'qr-desk' && styles.iconCircleQr,
+                  { backgroundColor: c.iconBg },
+                ]}
+              >
+                <Ionicons
+                  name={c.icon}
+                  size={c.target === 'qr-desk' ? 30 : 22}
+                  color={c.accent}
+                />
               </View>
-              <Text style={styles.cardValue}>{c.value}</Text>
-              <Text style={styles.cardTitle}>{c.title}</Text>
+              {c.target !== 'qr-desk' ? (
+                <Text style={styles.cardValue}>{c.value}</Text>
+              ) : null}
+              <Text style={[styles.cardTitle, c.target === 'qr-desk' && styles.cardTitleQr]}>
+                {c.title}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -168,12 +203,8 @@ export default function AdminHomeScreen() {
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 80 },
+  content: { padding: spacing.lg, paddingBottom: 88 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  /**
-   * Tab bar bu ekranın dışında; `page` zaten sekme çubuğunun üstünde biter.
-   * Bu yüzden `bottom` sadece ince bir boşluk — tab ile buton arası büyük gap oluşmaz.
-   */
   logoutFab: {
     position: 'absolute',
     right: spacing.lg,
@@ -190,23 +221,52 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.md,
+    justifyContent: 'space-between',
+    rowGap: spacing.md,
   },
   card: {
-    width: '47%',
+    width: '48%',
     backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    ...shadows.md,
+    borderRadius: 18,
+    paddingVertical: spacing.lg + 2,
+    paddingHorizontal: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  cardValue: { fontSize: 26, fontWeight: '700', color: colors.textPrimary },
-  cardTitle: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  iconCircleQr: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    marginBottom: spacing.lg,
+  },
+  cardValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  cardTitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 6,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  cardTitleQr: {
+    marginTop: 0,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
 });

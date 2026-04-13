@@ -93,6 +93,22 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="qr-desk"
+        options={{
+          title: 'QR Tara',
+          headerTitle: 'Masa QR',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <AdminTabBarIcon
+              name="qr-code"
+              nameOutline="qr-code-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="halls"
         options={{
           title: 'Salonlar',
