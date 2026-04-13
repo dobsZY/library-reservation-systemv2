@@ -14,7 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { adminApi, AdminReservation } from '../../api/admin';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 import { SingleDatePicker } from '../../components/SingleDatePicker';
@@ -31,7 +31,7 @@ const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   reserved: { bg: '#DBEAFE', fg: '#2563EB' },
   checked_in: { bg: '#DCFCE7', fg: '#16A34A' },
   completed: { bg: '#F3F4F6', fg: '#6B7280' },
-  cancelled: { bg: '#FEE2E2', fg: '#DC2626' },
+  cancelled: { bg: adminTheme.primaryLight, fg: adminTheme.primary },
   expired: { bg: '#F3F4F6', fg: '#9CA3AF' },
 };
 
@@ -189,10 +189,10 @@ export default function AdminReservationsScreen() {
             disabled={cancelLoading === item.id}
           >
             {cancelLoading === item.id ? (
-              <ActivityIndicator size="small" color="#DC2626" />
+              <ActivityIndicator size="small" color={adminTheme.primary} />
             ) : (
               <>
-                <Ionicons name="close-circle-outline" size={16} color="#DC2626" />
+                <Ionicons name="close-circle-outline" size={16} color={adminTheme.primary} />
                 <Text style={styles.cancelText}>İptal Et</Text>
               </>
             )}
@@ -229,7 +229,7 @@ export default function AdminReservationsScreen() {
 
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       ) : (
         <FlatList
@@ -237,7 +237,7 @@ export default function AdminReservationsScreen() {
           keyExtractor={(r) => r.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
   },
-  filterChipActive: { backgroundColor: '#DC2626' },
+  filterChipActive: { backgroundColor: adminTheme.primary },
   filterLabel: {
     fontSize: 13,
     lineHeight: 16,
@@ -499,9 +499,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingVertical: 8,
     borderRadius: borderRadius.md,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
   },
-  cancelText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
+  cancelText: { fontSize: 13, fontWeight: '600', color: adminTheme.primary },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyText: { fontSize: 15, color: colors.textMuted, marginTop: spacing.md },
 });

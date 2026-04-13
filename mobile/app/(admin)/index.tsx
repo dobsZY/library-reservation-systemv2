@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { adminApi, AdminOverview } from '../../api/admin';
 import { logout } from '../../api/auth';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
@@ -86,7 +86,7 @@ export default function AdminHomeScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#DC2626" />
+        <ActivityIndicator size="large" color={adminTheme.primary} />
       </View>
     );
   }
@@ -129,53 +129,63 @@ export default function AdminHomeScreen() {
     : [];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
-    >
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Yönetici Paneli</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-          <Ionicons name="log-out-outline" size={22} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.page}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
+      >
+        <View style={styles.grid}>
+          {cards.map((c) => (
+            <TouchableOpacity
+              key={c.key}
+              style={styles.card}
+              activeOpacity={0.8}
+              onPress={() => router.push(c.route as any)}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: c.color + '20' }]}>
+                <Ionicons name={c.icon} size={24} color={c.color} />
+              </View>
+              <Text style={styles.cardValue}>{c.value}</Text>
+              <Text style={styles.cardTitle}>{c.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
-      <View style={styles.grid}>
-        {cards.map((c) => (
-          <TouchableOpacity
-            key={c.key}
-            style={styles.card}
-            activeOpacity={0.8}
-            onPress={() => router.push(c.route as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: c.color + '20' }]}>
-              <Ionicons name={c.icon} size={24} color={c.color} />
-            </View>
-            <Text style={styles.cardValue}>{c.value}</Text>
-            <Text style={styles.cardTitle}>{c.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+      <TouchableOpacity
+        onPress={handleLogout}
+        style={styles.logoutFab}
+        accessibilityRole="button"
+        accessibilityLabel="Çıkış yap"
+      >
+        <Ionicons name="log-out-outline" size={24} color={adminTheme.primary} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingBottom: 80 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  greeting: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
-  logoutBtn: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: '#FEE2E2',
+  /**
+   * Tab bar bu ekranın dışında; `page` zaten sekme çubuğunun üstünde biter.
+   * Bu yüzden `bottom` sadece ince bir boşluk — tab ile buton arası büyük gap oluşmaz.
+   */
+  logoutFab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xs,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: adminTheme.primaryLight,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
   },
   grid: {
     flexDirection: 'row',

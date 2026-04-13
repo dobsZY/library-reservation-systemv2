@@ -1,12 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
-import { colors } from '../../constants/theme';
-
-/** Üst bar / marka kırmızısı */
-const ADMIN_HEADER_RED = '#DC2626';
-/** Açık kırmızı zemin üzerinde okunaklı ikon ve sekme yazısı */
-const ADMIN_TAB_ACTIVE = '#991B1B';
+import { adminTheme, colors } from '../../constants/theme';
 
 const TAB_ICON_BOX = 40;
 
@@ -22,7 +17,7 @@ function AdminTabBarIcon({
   inactiveColor: string;
 }) {
   const iconName = focused ? name : nameOutline;
-  const iconColor = focused ? ADMIN_TAB_ACTIVE : inactiveColor;
+  const iconColor = focused ? adminTheme.primary : inactiveColor;
 
   return (
     <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
@@ -35,7 +30,7 @@ export default function AdminTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: ADMIN_TAB_ACTIVE,
+        tabBarActiveTintColor: adminTheme.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.white,
@@ -55,7 +50,7 @@ export default function AdminTabLayout() {
           minWidth: 0,
         },
         headerStyle: {
-          backgroundColor: ADMIN_HEADER_RED,
+          backgroundColor: adminTheme.headerBackground,
           elevation: 0,
           shadowOpacity: 0,
         },
@@ -148,6 +143,6 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   iconWrapActive: {
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
   },
 });

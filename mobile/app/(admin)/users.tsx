@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminUser } from '../../api/admin';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
@@ -80,11 +80,11 @@ export default function AdminUsersScreen() {
   const renderUser = ({ item }: { item: AdminUser }) => (
     <View style={styles.card}>
       <View style={styles.row}>
-        <View style={[styles.avatar, { backgroundColor: item.role === 'admin' ? '#FEE2E2' : colors.primaryLight }]}>
+        <View style={[styles.avatar, { backgroundColor: item.role === 'admin' ? adminTheme.primaryLight : colors.primaryLight }]}>
           <Ionicons
             name={item.role === 'admin' ? 'shield' : 'person'}
             size={20}
-            color={item.role === 'admin' ? '#DC2626' : colors.primary}
+            color={item.role === 'admin' ? adminTheme.primary : colors.primary}
           />
         </View>
         <View style={styles.info}>
@@ -106,10 +106,10 @@ export default function AdminUsersScreen() {
           disabled={actionLoading === item.id}
         >
           {actionLoading === item.id ? (
-            <ActivityIndicator size="small" color="#DC2626" />
+            <ActivityIndicator size="small" color={adminTheme.primary} />
           ) : (
             <>
-              <Ionicons name="log-out-outline" size={16} color="#DC2626" />
+              <Ionicons name="log-out-outline" size={16} color={adminTheme.primary} />
               <Text style={styles.actionText}>Oturumu Sonlandır</Text>
             </>
           )}
@@ -121,7 +121,7 @@ export default function AdminUsersScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#DC2626" />
+        <ActivityIndicator size="large" color={adminTheme.primary} />
       </View>
     );
   }
@@ -133,7 +133,7 @@ export default function AdminUsersScreen() {
       renderItem={renderUser}
       style={styles.container}
       contentContainerStyle={styles.list}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Ionicons name="people-outline" size={48} color={colors.textMuted} />
@@ -178,9 +178,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingVertical: 8,
     borderRadius: borderRadius.md,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
   },
-  actionText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
+  actionText: { fontSize: 13, fontWeight: '600', color: adminTheme.primary },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyText: { fontSize: 15, color: colors.textMuted, marginTop: spacing.md },
 });

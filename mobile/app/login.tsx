@@ -15,7 +15,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!studentNumber || !password) {
-      setError('Öğrenci numarası ve şifre zorunludur.');
+      setError('Kullanıcı adı / öğrenci numarası ve şifre zorunludur.');
       return;
     }
 
@@ -50,16 +50,17 @@ export default function LoginScreen() {
           <Ionicons name="library" size={40} color={colors.primary} />
         </View>
         <Text style={styles.title}>Selçuk Kütüphane</Text>
-        <Text style={styles.subtitle}>Öğrenci Girişi</Text>
+        <Text style={styles.subtitle}>Öğrenci / personel / yönetici girişi</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Öğrenci Numarası</Text>
+          <Text style={styles.label}>Öğrenci numarası veya kullanıcı adı</Text>
           <TextInput
             style={styles.input}
             value={studentNumber}
             onChangeText={setStudentNumber}
-            keyboardType="number-pad"
+            keyboardType="default"
             autoCapitalize="none"
+            autoCorrect={false}
           />
 
           <Text style={[styles.label, { marginTop: spacing.md }]}>Şifre</Text>

@@ -38,6 +38,13 @@ export const colors = {
   maintenance: '#9CA3AF',  // Bakımda
 };
 
+/** Mobil yönetici paneli — sekme/aksiyon bordo + açık pembe vurgu */
+export const adminTheme = {
+  primary: '#8B1A1A',
+  primaryLight: '#FCE4E4',
+  headerBackground: '#8B1A1A',
+} as const;
+
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -115,6 +122,7 @@ export const shadows = {
 
 export default {
   colors,
+  adminTheme,
   spacing,
   borderRadius,
   typography,

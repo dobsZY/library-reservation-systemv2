@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminHall, AdminTable } from '../../api/admin';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
@@ -104,7 +104,7 @@ export default function AdminHallsScreen() {
     if (loading) {
       return (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       );
     }
@@ -114,11 +114,11 @@ export default function AdminHallsScreen() {
         keyExtractor={(h) => h.id}
         style={styles.container}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.hallCard} onPress={() => selectHall(item)}>
             <View style={styles.hallIcon}>
-              <Ionicons name="business-outline" size={22} color="#DC2626" />
+              <Ionicons name="business-outline" size={22} color={adminTheme.primary} />
             </View>
             <View style={styles.hallInfo}>
               <Text style={styles.hallName}>{item.name}</Text>
@@ -141,7 +141,7 @@ export default function AdminHallsScreen() {
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.backRow} onPress={() => setSelectedHall(null)}>
-        <Ionicons name="arrow-back" size={20} color="#DC2626" />
+        <Ionicons name="arrow-back" size={20} color={adminTheme.primary} />
         <Text style={styles.backText}>Salonlara Dön</Text>
       </TouchableOpacity>
 
@@ -149,7 +149,7 @@ export default function AdminHallsScreen() {
 
       {tablesLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       ) : (
         <FlatList
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: 0,
   },
-  backText: { fontSize: 14, fontWeight: '600', color: '#DC2626' },
+  backText: { fontSize: 14, fontWeight: '600', color: adminTheme.primary },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: borderRadius.md,
-    backgroundColor: '#DC2626',
+    backgroundColor: adminTheme.primary,
     alignItems: 'center',
   },
   modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },
