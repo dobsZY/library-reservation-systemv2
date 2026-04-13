@@ -18,6 +18,7 @@ import { reservationsApi } from '../../api/reservations';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 import { onEvent, emitEvent, AppEvents } from '../../utils/events';
+import { getCurrentUser } from '../../api/auth';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function HomeScreen() {
   const [endingSession, setEndingSession] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expiryEmittedRef = useRef<string | null>(null); // Hangi rezervasyon için süre doldu emiti yapıldığını takip et
+  const [staffDeskQrVisible, setStaffDeskQrVisible] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -62,6 +64,12 @@ export default function HomeScreen() {
     useCallback(() => {
       fetchData();
     }, [fetchData])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void getCurrentUser().then((u) => setStaffDeskQrVisible(u?.role === 'staff'));
+    }, []),
   );
 
   useEffect(() => {
@@ -282,6 +290,25 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
+
+      {staffDeskQrVisible ? (
+        <TouchableOpacity
+          style={styles.staffDeskQrCard}
+          activeOpacity={0.88}
+          onPress={() => router.push('/table-qr-desk')}
+        >
+          <View style={styles.staffDeskQrIcon}>
+            <Ionicons name="qr-code-outline" size={24} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.staffDeskQrTitle}>Masa QR kontrolü</Text>
+            <Text style={styles.staffDeskQrSub}>
+              Masanın QR kodunu okutarak bugünkü rezervasyonları ve aktif slotu görüntüleyin.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+        </TouchableOpacity>
+      ) : null}
 
       {/* Hızlı Rezervasyon */}
       {!activeReservation && (
@@ -741,4 +768,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.danger,
   },
+  staffDeskQrCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    gap: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.sm,
+  },
+  staffDeskQrIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  staffDeskQrTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
+  staffDeskQrSub: { fontSize: 12, color: colors.textSecondary, marginTop: 4, lineHeight: 17 },
 });
