@@ -18,6 +18,8 @@ import { showAppDialog } from '../utils/appDialogController';
 
 export type TableQrDeskLayout = 'modal' | 'tab';
 
+export type TableQrDeskHomeBase = '/(admin)' | '/(staff)';
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
 }
@@ -41,7 +43,14 @@ function statusLabelTr(status: string): string {
   }
 }
 
-export default function TableQrDeskScreen({ layout = 'modal' }: { layout?: TableQrDeskLayout }) {
+export default function TableQrDeskScreen({
+  layout = 'modal',
+  homeBasePath = '/(admin)',
+}: {
+  layout?: TableQrDeskLayout;
+  /** Sekmeden çıkışta dönülecek kök (personel / yönetici ayrı gruplar) */
+  homeBasePath?: TableQrDeskHomeBase;
+}) {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(false);
@@ -50,11 +59,11 @@ export default function TableQrDeskScreen({ layout = 'modal' }: { layout?: Table
 
   const dismiss = useCallback(() => {
     if (layout === 'tab') {
-      router.replace('/(admin)');
+      router.replace(homeBasePath as any);
     } else {
       router.back();
     }
-  }, [layout, router]);
+  }, [layout, router, homeBasePath]);
 
   const handleBarCodeScanned = async ({ data }: { type: string; data: string }) => {
     if (scanning) return;

@@ -144,6 +144,41 @@ export default function HallDetailScreen() {
     [selectedTableSlots],
   );
 
+  /** Kroki rengi için: dakikada bir "şu an" dilimini güncelle */
+  const [mapColorTick, setMapColorTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMapColorTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /**
+   * Kırmızı: (1) o gün için dönen tüm rezervasyon slotları dolu, veya
+   * (2) şu an bulunulan saat aralığında o masada rezervasyon/kilit var.
+   * Slot yoksa (ör. gün sonu) kroki için dolu kabul edilir.
+   */
+  const tableMapShowRed = useMemo(() => {
+    void mapColorTick;
+    const now = Date.now();
+    const map = new Map<string, boolean>();
+    if (!slotsData?.tables?.length) return map;
+    for (const row of slotsData.tables) {
+      const slots = row.slots;
+      if (!slots.length) {
+        map.set(row.tableId, true);
+        continue;
+      }
+      const allSlotsTaken = slots.every((s) => !s.isAvailable);
+      const bookedInCurrentInterval = slots.some((s) => {
+        if (s.isAvailable) return false;
+        const startMs = new Date(s.startTime).getTime();
+        const endMs = new Date(s.endTime).getTime();
+        return now >= startMs && now < endMs;
+      });
+      map.set(row.tableId, allSlotsTaken || bookedInCurrentInterval);
+    }
+    return map;
+  }, [slotsData, mapColorTick]);
+
   const fetchHallData = useCallback(async () => {
     if (!hallId) return;
     const fallbackYmd = localCalendarYmd();
@@ -274,7 +309,9 @@ export default function HallDetailScreen() {
   };
 
   const getTableColor = (item: TableAvailabilityItem, isSelected: boolean) => {
-    if (!item.isAvailable) return colors.danger;
+    const hasSlotDerived = tableMapShowRed.has(item.table.id);
+    const showRed = hasSlotDerived ? tableMapShowRed.get(item.table.id) === true : !item.isAvailable;
+    if (showRed) return colors.danger;
     if (isSelected) return colors.primary;
     return colors.success;
   };
