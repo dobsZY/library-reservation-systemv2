@@ -341,7 +341,7 @@ export default function AdminUsersScreen() {
         <Pressable style={styles.roleModalBackdrop} onPress={() => setRolePickerUser(null)}>
           <Pressable style={styles.roleModalCard} onPress={(e) => e.stopPropagation()}>
             <View style={styles.roleModalHeader}>
-              <Text style={styles.roleModalTitle}>Rol seçin</Text>
+              <Text style={styles.roleModalTitle}>Rol Seçimi</Text>
               <TouchableOpacity onPress={() => setRolePickerUser(null)} hitSlop={10}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -364,17 +364,12 @@ export default function AdminUsersScreen() {
                   disabled={!rolePickerUser || current}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.roleOptionTextCol}>
-                    <Text style={[styles.roleOptionLabel, current && styles.roleOptionLabelMuted]}>
-                      {opt.label}
-                    </Text>
-                    <Text style={styles.roleOptionHint}>{opt.hint}</Text>
-                  </View>
-                  {current ? (
-                    <Text style={styles.roleOptionBadge}>Mevcut</Text>
-                  ) : (
-                    <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                  )}
+                  <Text style={[styles.roleOptionLabel, current && styles.roleOptionLabelCurrent]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.roleOptionHint, current && styles.roleOptionHintCurrent]}>
+                    {opt.hint}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
@@ -524,30 +519,39 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   roleOption: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md + 4,
+    paddingHorizontal: spacing.lg,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: spacing.sm,
-    backgroundColor: colors.background,
+    backgroundColor: colors.white,
   },
   roleOptionCurrent: {
-    opacity: 0.55,
-    borderColor: colors.border,
+    backgroundColor: adminTheme.primaryLight,
+    borderColor: adminTheme.primary,
+    borderWidth: 2,
   },
-  roleOptionTextCol: { flex: 1, marginRight: spacing.sm },
-  roleOptionLabel: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  roleOptionLabelMuted: { color: colors.textMuted },
-  roleOptionHint: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  roleOptionBadge: {
-    fontSize: 11,
+  roleOptionLabel: {
+    fontSize: 16,
     fontWeight: '700',
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  roleOptionLabelCurrent: {
+    color: adminTheme.primary,
+  },
+  roleOptionHint: {
+    fontSize: 12,
     color: colors.textMuted,
-    textTransform: 'uppercase',
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 17,
+  },
+  roleOptionHintCurrent: {
+    color: adminTheme.primary,
+    opacity: 0.88,
   },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyText: { fontSize: 15, color: colors.textMuted, marginTop: spacing.md },

@@ -89,6 +89,7 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ title: 'Giriş', headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        <Stack.Screen name="(staff)" options={{ headerShown: false }} />
         <Stack.Screen
           name="hall/[id]"
           options={{

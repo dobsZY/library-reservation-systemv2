@@ -1,7 +1,9 @@
+import { useMemo } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
 import { adminTheme, colors } from '../../constants/theme';
+import { BackofficeCapabilitiesProvider } from '../../context/BackofficeCapabilitiesContext';
 
 const TAB_ICON_BOX = 40;
 
@@ -27,7 +29,17 @@ function AdminTabBarIcon({
 }
 
 export default function AdminTabLayout() {
+  const caps = useMemo(
+    () => ({
+      variant: 'admin' as const,
+      allowCancelReservation: true,
+      allowTableEdit: true,
+    }),
+    [],
+  );
+
   return (
+    <BackofficeCapabilitiesProvider value={caps}>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: adminTheme.primary,
@@ -139,6 +151,7 @@ export default function AdminTabLayout() {
         }}
       />
     </Tabs>
+    </BackofficeCapabilitiesProvider>
   );
 }
 

@@ -18,6 +18,7 @@ import { adminTheme, colors, spacing, borderRadius, shadows } from '../../consta
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 import { SingleDatePicker } from '../../components/SingleDatePicker';
+import { useBackofficeCapabilities } from '../../context/BackofficeCapabilitiesContext';
 
 const FILTERS = [
   { key: '', label: 'Tümü' },
@@ -57,6 +58,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminReservationsScreen() {
+  const { allowCancelReservation } = useBackofficeCapabilities();
   const { filter: routeFilter } = useLocalSearchParams<{ filter?: string }>();
   const [reservations, setReservations] = useState<AdminReservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,7 +185,7 @@ export default function AdminReservationsScreen() {
     const badge = getStatusBadge(item.status);
     const statusLabel = isAdminCancelled ? 'İptal edildi (yönetici)' : badge.label;
     const isCancelable =
-      item.status === 'reserved' || item.status === 'checked_in';
+      allowCancelReservation && (item.status === 'reserved' || item.status === 'checked_in');
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>

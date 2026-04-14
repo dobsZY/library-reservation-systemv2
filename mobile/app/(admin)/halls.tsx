@@ -18,8 +18,10 @@ import { adminApi, AdminHall, AdminTable } from '../../api/admin';
 import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
+import { useBackofficeCapabilities } from '../../context/BackofficeCapabilitiesContext';
 
 export default function AdminHallsScreen() {
+  const { allowTableEdit } = useBackofficeCapabilities();
   const [halls, setHalls] = useState<AdminHall[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -160,9 +162,13 @@ export default function AdminHallsScreen() {
             <View style={styles.tableCard}>
               <View style={styles.tableHeader}>
                 <Text style={styles.tableNum}>Masa {item.tableNumber}</Text>
-                <TouchableOpacity onPress={() => openEdit(item)}>
-                  <Ionicons name="create-outline" size={20} color="#3B82F6" />
-                </TouchableOpacity>
+                {allowTableEdit ? (
+                  <TouchableOpacity onPress={() => openEdit(item)}>
+                    <Ionicons name="create-outline" size={20} color="#3B82F6" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 24 }} />
+                )}
               </View>
               <Text style={styles.tableDetail}>
                 Konum: ({item.positionX}, {item.positionY}) · Boyut: {item.width}×{item.height}
@@ -187,8 +193,8 @@ export default function AdminHallsScreen() {
         />
       )}
 
-      {/* Edit Modal */}
-      <Modal visible={!!editingTable} transparent animationType="slide">
+      {/* Edit Modal — yalnızca yönetici */}
+      <Modal visible={allowTableEdit && !!editingTable} transparent animationType="slide">
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
             <ScrollView>

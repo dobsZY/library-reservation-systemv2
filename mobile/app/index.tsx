@@ -3,7 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { Redirect } from 'expo-router';
 import { getToken, verifySession } from '../api/auth';
 
-type AuthTarget = 'login' | '(tabs)' | '(admin)';
+type AuthTarget = 'login' | '(tabs)' | '(admin)' | '(staff)';
 
 /**
  * Uygulama giriş noktası (/). Expo Router web'de Stack.initialRouteName güvenilir olmadığı için
@@ -30,6 +30,8 @@ export default function Index() {
       }
       if (user.role === 'admin') {
         setTarget('(admin)');
+      } else if (user.role === 'staff') {
+        setTarget('(staff)');
       } else {
         setTarget('(tabs)');
       }
@@ -53,6 +55,9 @@ export default function Index() {
   }
   if (target === '(admin)') {
     return <Redirect href="/(admin)" />;
+  }
+  if (target === '(staff)') {
+    return <Redirect href="/(staff)" />;
   }
   return <Redirect href="/(tabs)" />;
 }

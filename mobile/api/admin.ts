@@ -50,6 +50,7 @@ export interface AdminOverview {
   totalReservations: number;
   activeReservations: number;
   noShowCount: number;
+  cancelledReservations: number;
   occupancyRate: number;
 }
 

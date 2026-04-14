@@ -29,6 +29,8 @@ export default function LoginScreen() {
       }
       if (res.user.role === 'admin') {
         router.replace('/(admin)');
+      } else if (res.user.role === 'staff') {
+        router.replace('/(staff)');
       } else {
         router.replace('/(tabs)');
       }

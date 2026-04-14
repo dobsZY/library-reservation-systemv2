@@ -23,6 +23,8 @@ type DashboardCard = {
   icon: keyof typeof Ionicons.glyphMap;
   accent: string;
   iconBg: string;
+  /** Belirtilirse bu ekrana gider */
+  href?: string;
   /** Varsayılan: masa kontrol; qr-desk: QR tarama sekmesi */
   target?: 'masa-kontrol' | 'qr-desk';
 };
@@ -106,6 +108,7 @@ export default function AdminHomeScreen() {
           icon: 'people',
           accent: '#3B82F6',
           iconBg: '#DBEAFE',
+          href: '/(admin)/users',
         },
         {
           key: 'reservations-active',
@@ -114,6 +117,7 @@ export default function AdminHomeScreen() {
           icon: 'time',
           accent: '#22C55E',
           iconBg: '#DCFCE7',
+          href: '/(admin)/reservations?filter=active',
         },
         {
           key: 'reservations-expired',
@@ -122,6 +126,16 @@ export default function AdminHomeScreen() {
           icon: 'alert-circle',
           accent: '#EF4444',
           iconBg: '#FEE2E2',
+          href: '/(admin)/reservations?filter=expired',
+        },
+        {
+          key: 'reservations-cancelled',
+          title: 'İptal Edilen',
+          value: overview.cancelledReservations ?? 0,
+          icon: 'close-circle-outline',
+          accent: '#4F46E5',
+          iconBg: '#EEF2FF',
+          href: '/(admin)/reservations?filter=cancelled',
         },
         {
           key: 'occupancy',
@@ -151,40 +165,59 @@ export default function AdminHomeScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
       >
         <View style={styles.grid}>
-          {cards.map((c) => (
-            <TouchableOpacity
-              key={c.key}
-              style={styles.card}
-              activeOpacity={0.88}
-              onPress={() =>
-                router.push(
-                  (c.target === 'qr-desk' ? '/(admin)/qr-desk' : MASA_KONTROL_PATH) as any,
-                )
-              }
-              accessibilityRole="button"
-              accessibilityLabel={c.title}
-            >
-              <View
-                style={[
-                  styles.iconCircle,
-                  c.target === 'qr-desk' && styles.iconCircleQr,
-                  { backgroundColor: c.iconBg },
-                ]}
+          {cards.map((c) => {
+            const navigable = Boolean(c.href || c.target);
+            const cardBody = (
+              <>
+                <View
+                  style={[
+                    styles.iconCircle,
+                    c.target === 'qr-desk' && styles.iconCircleQr,
+                    { backgroundColor: c.iconBg },
+                  ]}
+                >
+                  <Ionicons
+                    name={c.icon}
+                    size={c.target === 'qr-desk' ? 30 : 22}
+                    color={c.accent}
+                  />
+                </View>
+                {c.target === 'qr-desk' ? (
+                  <View style={styles.cardValueSpacer} />
+                ) : (
+                  <Text style={styles.cardValue}>{c.value}</Text>
+                )}
+                <Text style={styles.cardTitle}>{c.title}</Text>
+              </>
+            );
+            if (!navigable) {
+              return (
+                <View key={c.key} style={styles.card} accessibilityLabel={c.title}>
+                  {cardBody}
+                </View>
+              );
+            }
+            return (
+              <TouchableOpacity
+                key={c.key}
+                style={styles.card}
+                activeOpacity={0.88}
+                onPress={() => {
+                  if (c.href) {
+                    router.push(c.href as any);
+                    return;
+                  }
+                  router.push(
+                    (c.target === 'qr-desk' ? '/(admin)/qr-desk' : MASA_KONTROL_PATH) as any,
+                  );
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={c.title}
               >
-                <Ionicons
-                  name={c.icon}
-                  size={c.target === 'qr-desk' ? 30 : 22}
-                  color={c.accent}
-                />
-              </View>
-              {c.target !== 'qr-desk' ? (
-                <Text style={styles.cardValue}>{c.value}</Text>
-              ) : null}
-              <Text style={[styles.cardTitle, c.target === 'qr-desk' && styles.cardTitleQr]}>
-                {c.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                {cardBody}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
 
@@ -248,7 +281,11 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  /** QR kartında sayı satırı yok; diğer kartlardaki başlık hizası için boşluk */
+  cardValueSpacer: {
+    minHeight: 34,
   },
   cardValue: {
     fontSize: 28,
@@ -262,11 +299,5 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '500',
     lineHeight: 18,
-  },
-  cardTitleQr: {
-    marginTop: 0,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textPrimary,
   },
 });
