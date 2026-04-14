@@ -90,6 +90,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
         <Stack.Screen name="(staff)" options={{ headerShown: false }} />
+        <Stack.Screen name="notification-settings" options={{ title: 'Bildirim Ayarları' }} />
+        <Stack.Screen name="help-support" options={{ title: 'Yardım & Destek' }} />
         <Stack.Screen
           name="hall/[id]"
           options={{

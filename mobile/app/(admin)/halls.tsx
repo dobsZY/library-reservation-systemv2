@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -33,6 +33,19 @@ export default function AdminHallsScreen() {
   const [editingTable, setEditingTable] = useState<AdminTable | null>(null);
   const [editForm, setEditForm] = useState({ positionX: '', positionY: '', width: '', height: '' });
   const [saving, setSaving] = useState(false);
+
+  const occupancySummary = useMemo(() => {
+    const totals = halls.reduce(
+      (acc, h) => {
+        acc.total += h.totalTables ?? 0;
+        acc.occupied += h.occupiedTables ?? 0;
+        return acc;
+      },
+      { total: 0, occupied: 0 },
+    );
+    const rate = totals.total > 0 ? (totals.occupied / totals.total) * 100 : 0;
+    return { ...totals, rate };
+  }, [halls]);
 
   const fetchHalls = useCallback(async () => {
     try {
@@ -117,6 +130,23 @@ export default function AdminHallsScreen() {
         style={styles.container}
         contentContainerStyle={styles.list}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
+        ListHeaderComponent={
+          <View style={styles.dashboardCard}>
+            <Text style={styles.dashboardTitle}>Salon Doluluk Dashboard</Text>
+            <Text style={styles.dashboardSub}>
+              Toplam {occupancySummary.total} masanın {occupancySummary.occupied} tanesi dolu
+            </Text>
+            <View style={styles.dashboardProgressTrack}>
+              <View
+                style={[
+                  styles.dashboardProgressFill,
+                  { width: `${Math.max(0, Math.min(100, occupancySummary.rate))}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.dashboardRate}>Genel Doluluk: %{occupancySummary.rate.toFixed(1)}</Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.hallCard} onPress={() => selectHall(item)}>
             <View style={styles.hallIcon}>
@@ -125,6 +155,21 @@ export default function AdminHallsScreen() {
             <View style={styles.hallInfo}>
               <Text style={styles.hallName}>{item.name}</Text>
               <Text style={styles.hallSub}>Kat {item.floor}</Text>
+              {typeof item.occupancyRate === 'number' && (
+                <>
+                  <Text style={styles.hallOccText}>
+                    %{item.occupancyRate.toFixed(1)} doluluk · {item.occupiedTables ?? 0}/{item.totalTables ?? 0} masa
+                  </Text>
+                  <View style={styles.hallProgressTrack}>
+                    <View
+                      style={[
+                        styles.hallProgressFill,
+                        { width: `${Math.max(0, Math.min(100, item.occupancyRate))}%` },
+                      ]}
+                    />
+                  </View>
+                </>
+              )}
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
@@ -257,6 +302,57 @@ const styles = StyleSheet.create({
   hallInfo: { flex: 1 },
   hallName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   hallSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  hallOccText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  hallProgressTrack: {
+    marginTop: 6,
+    height: 6,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+    width: '100%',
+  },
+  hallProgressFill: {
+    height: '100%',
+    backgroundColor: adminTheme.primary,
+  },
+  dashboardCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  dashboardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  dashboardSub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  dashboardProgressTrack: {
+    marginTop: spacing.sm,
+    height: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+  },
+  dashboardProgressFill: {
+    height: '100%',
+    backgroundColor: adminTheme.primary,
+  },
+  dashboardRate: {
+    marginTop: spacing.xs,
+    fontSize: 12,
+    fontWeight: '700',
+    color: adminTheme.primary,
+  },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',

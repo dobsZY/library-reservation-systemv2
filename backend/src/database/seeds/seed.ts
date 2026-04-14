@@ -93,12 +93,14 @@ const SEED_USERS = [
     studentNumber: 'admin001',
     fullName: 'Sistem Yöneticisi',
     role: UserRole.ADMIN,
+    isSuperAdmin: true,
     password: 'Admin123!',
   },
   {
     studentNumber: 'admin002',
     fullName: 'Yardımcı Yönetici',
     role: UserRole.ADMIN,
+    isSuperAdmin: false,
     password: 'Admin123!',
   },
   {
@@ -123,6 +125,14 @@ async function seed() {
     });
 
     if (existing) {
+      const shouldBeSuperAdmin = !!userData.isSuperAdmin;
+      if (existing.isSuperAdmin !== shouldBeSuperAdmin) {
+        existing.isSuperAdmin = shouldBeSuperAdmin;
+        await userRepo.save(existing);
+        console.log(
+          `  [GUNCELLENDI] ${userData.studentNumber} super-admin=${shouldBeSuperAdmin ? 'evet' : 'hayir'}`,
+        );
+      }
       console.log(`  [MEVCUT] ${userData.studentNumber} - ${userData.fullName}`);
       continue;
     }
@@ -132,6 +142,7 @@ async function seed() {
       studentNumber: userData.studentNumber,
       fullName: userData.fullName,
       role: userData.role,
+      isSuperAdmin: !!userData.isSuperAdmin,
       passwordHash,
     });
     await userRepo.save(user);

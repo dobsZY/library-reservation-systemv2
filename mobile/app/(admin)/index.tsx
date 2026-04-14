@@ -144,6 +144,7 @@ export default function AdminHomeScreen() {
           icon: 'bar-chart',
           accent: '#F59E0B',
           iconBg: '#FEF3C7',
+          href: '/(admin)/halls',
         },
         {
           key: 'qr-desk',

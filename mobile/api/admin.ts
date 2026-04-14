@@ -5,6 +5,7 @@ export interface AdminUser {
   studentNumber: string;
   fullName: string;
   role: string;
+  isSuperAdmin?: boolean;
   isActive: boolean;
   hasActiveSession: boolean;
   createdAt: string;
@@ -32,6 +33,10 @@ export interface AdminHall {
   name: string;
   floor: number;
   isActive: boolean;
+  totalTables?: number;
+  occupiedTables?: number;
+  availableTables?: number;
+  occupancyRate?: number;
 }
 
 export interface AdminTable {

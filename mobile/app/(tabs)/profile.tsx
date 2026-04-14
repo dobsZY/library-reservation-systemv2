@@ -226,7 +226,10 @@ export default function ProfileScreen() {
       <View style={styles.menuSection}>
         <View style={styles.divider} />
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/notification-settings')}
+        >
           <View style={styles.menuIcon}>
             <Ionicons name="notifications-outline" size={22} color={colors.textSecondary} />
           </View>
@@ -236,7 +239,10 @@ export default function ProfileScreen() {
 
         <View style={styles.divider} />
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => router.push('/help-support')}
+        >
           <View style={styles.menuIcon}>
             <Ionicons name="help-circle-outline" size={22} color={colors.textSecondary} />
           </View>

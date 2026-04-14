@@ -42,8 +42,11 @@ export class AdminController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Kullanıcı oturumlarını zorla sonlandır' })
-  async forceLogout(@Param('id', ParseUUIDPipe) id: string) {
-    await this.adminService.forceLogout(id);
+  async forceLogout(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    await this.adminService.forceLogout(id, actor.id);
     return { message: 'Kullanıcı oturumları sonlandırıldı.' };
   }
 

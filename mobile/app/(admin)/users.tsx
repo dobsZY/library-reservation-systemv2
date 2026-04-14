@@ -161,6 +161,12 @@ export default function AdminUsersScreen() {
     return users.filter((u) => userMatchesSearch(u, q));
   }, [users, searchQuery]);
 
+  const currentUserIsSuperAdmin = useMemo(() => {
+    if (!currentUserId) return false;
+    const current = users.find((u) => u.id === currentUserId);
+    return !!current?.isSuperAdmin;
+  }, [users, currentUserId]);
+
   const userSections = useMemo(() => {
     const known = new Set(USER_ROLE_SECTIONS.map((s) => s.role));
     const base = USER_ROLE_SECTIONS.map(({ role, title }) => ({
@@ -222,6 +228,11 @@ export default function AdminUsersScreen() {
 
   const renderUser = ({ item }: { item: AdminUser }) => {
     const av = avatarForRole(item.role);
+    const targetIsAdmin = item.role.toLowerCase() === 'admin';
+    const canShowRoleChangeButton =
+      item.id !== currentUserId && (!targetIsAdmin || currentUserIsSuperAdmin);
+    const canShowForceLogoutButton =
+      item.hasActiveSession && (!targetIsAdmin || currentUserIsSuperAdmin);
     return (
     <View style={styles.card}>
       <View style={styles.row}>
@@ -243,7 +254,7 @@ export default function AdminUsersScreen() {
         </View>
       </View>
       <View style={styles.cardActions}>
-        {item.id !== currentUserId ? (
+        {canShowRoleChangeButton ? (
           <TouchableOpacity
             style={styles.roleBtn}
             onPress={() => setRolePickerUser(item)}
@@ -264,7 +275,7 @@ export default function AdminUsersScreen() {
             )}
           </TouchableOpacity>
         ) : null}
-        {item.hasActiveSession ? (
+        {canShowForceLogoutButton ? (
           <TouchableOpacity
             style={styles.actionBtn}
             onPress={() => handleForceLogout(item)}
