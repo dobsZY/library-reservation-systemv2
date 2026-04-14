@@ -7,7 +7,6 @@ import {
   Pressable,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -542,11 +541,11 @@ export default function ReservationScreen() {
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchReservation();
-      Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
+      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      Alert.alert('Hata', msg);
+      showAppDialog('Hata', msg);
     } finally {
       setCancelling(false);
     }
@@ -556,7 +555,7 @@ export default function ReservationScreen() {
     if (!activeReservation) return;
     const reservationId = activeReservation.id;
 
-    Alert.alert(
+    showAppDialog(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -567,6 +566,7 @@ export default function ReservationScreen() {
           onPress: () => void doCancelReservation(reservationId),
         },
       ],
+      'warning',
     );
   };
 
