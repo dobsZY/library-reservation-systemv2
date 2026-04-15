@@ -22,6 +22,11 @@ import { AdminService } from './admin.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import {
+  CreateSpecialPeriodDto,
+  ToggleSpecialPeriodDto,
+  UpdateSpecialPeriodDto,
+} from './dto/manage-special-period.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -115,5 +120,48 @@ export class AdminController {
   @ApiOperation({ summary: 'Genel istatistik özeti (yönetici / personel)' })
   async getOverview() {
     return this.adminService.getOverview();
+  }
+
+  // ── Special Periods ────────────────────────────────────────
+
+  @Get('special-periods')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Özel dönemleri listele (admin)' })
+  async getSpecialPeriods() {
+    return this.adminService.getSpecialPeriods();
+  }
+
+  @Post('special-periods')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Özel dönem oluştur (admin)' })
+  async createSpecialPeriod(@Body() dto: CreateSpecialPeriodDto) {
+    return this.adminService.createSpecialPeriod(dto);
+  }
+
+  @Patch('special-periods/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Özel dönem güncelle (admin)' })
+  async updateSpecialPeriod(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSpecialPeriodDto,
+  ) {
+    return this.adminService.updateSpecialPeriod(id, dto);
+  }
+
+  @Patch('special-periods/:id/status')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Özel dönemi aktif/pasif yap (admin)' })
+  async toggleSpecialPeriod(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ToggleSpecialPeriodDto,
+  ) {
+    return this.adminService.toggleSpecialPeriod(id, dto);
+  }
+
+  @Delete('special-periods/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiOperation({ summary: 'Özel dönemi sil (admin)' })
+  async deleteSpecialPeriod(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.deleteSpecialPeriod(id);
   }
 }

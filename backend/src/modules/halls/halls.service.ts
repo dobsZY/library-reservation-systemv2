@@ -8,6 +8,7 @@ import {
   LockStatus,
   Reservation,
   ReservationStatus,
+  SchedulePeriodKind,
 } from '../../database/entities';
 import { CreateHallDto, UpdateHallDto } from './dto';
 import { SchedulesService } from '../schedules/schedules.service';
@@ -26,6 +27,9 @@ function reservationStartMs(r: Reservation): number {
   const t = r.startTime as unknown;
   return t instanceof Date ? t.getTime() : new Date(String(t)).getTime();
 }
+
+// ReservationsService ile uyumlu: slot başlangıcından sonraki ilk 30 dk içinde rezervasyon alınabilir.
+const LATE_RESERVATION_GRACE_MINUTES = 30;
 
 @Injectable()
 export class HallsService {
@@ -212,6 +216,12 @@ export class HallsService {
     hallName: string;
     date: string;
     operatingHours: { opening: string; closing: string; is24h: boolean };
+    datePolicy: {
+      periodKind: SchedulePeriodKind;
+      allowAdvanceBooking: boolean;
+      maxAdvanceDays: number;
+      scheduleName: string;
+    };
     tables: Array<{
       tableId: string;
       tableNumber: string;
@@ -239,6 +249,14 @@ export class HallsService {
     const ymd = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     const hours = await this.schedulesService.getOperatingHoursForDate(queryDate);
+    const reservationPolicy = await this.schedulesService.getReservationDatePolicyForDate(queryDate);
+    const allowAdvanceBooking =
+      reservationPolicy.periodKind === SchedulePeriodKind.SPECIAL &&
+      (reservationPolicy.rules?.allowAdvanceBooking ?? true);
+    const maxAdvanceDays = Math.max(
+      1,
+      Number(reservationPolicy.rules?.maxAdvanceDays ?? 1),
+    );
     const openH = hours.is24h ? 0 : Number(hours.openingTime.split(':')[0]);
     const closeH = hours.is24h ? 24 : Number(hours.closingTime.split(':')[0]);
 
@@ -262,7 +280,15 @@ export class HallsService {
         const slotStart = new Date(year, month - 1, day, h, 0, 0, 0);
         const slotEnd = new Date(year, month - 1, day, h + 1, 0, 0, 0);
 
-        if (slotEnd <= now) continue;
+        const slotGraceDeadline = new Date(
+          slotStart.getTime() + LATE_RESERVATION_GRACE_MINUTES * 60 * 1000,
+        );
+        const isPastSlotWindowClosed = now > slotGraceDeadline;
+        const shouldHidePastSlot = !hours.is24h && slotEnd <= now;
+
+        // Normal akışta mevcut davranışı koru (tam geçmiş saatleri gizle).
+        // 7/24 özel dönemde tüm saat aralıklarını göster; geçmişi sadece pasif işaretle.
+        if (shouldHidePastSlot) continue;
 
         // Same overlap logic as ReservationsService.create()
         const conflictingReservation = tableReservations.find(
@@ -272,7 +298,7 @@ export class HallsService {
           (l) => l.lockStart < slotEnd && l.lockEnd > slotStart,
         );
 
-        const isAvailable = !conflictingReservation && !conflictingLock;
+        const isAvailable = !conflictingReservation && !conflictingLock && !isPastSlotWindowClosed;
 
         const slot: {
           startTime: string;
@@ -320,6 +346,12 @@ export class HallsService {
         opening: hours.openingTime,
         closing: hours.closingTime,
         is24h: hours.is24h,
+      },
+      datePolicy: {
+        periodKind: reservationPolicy.periodKind,
+        allowAdvanceBooking,
+        maxAdvanceDays,
+        scheduleName: reservationPolicy.scheduleName,
       },
       tables,
     };

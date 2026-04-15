@@ -121,6 +121,21 @@ export default function AdminTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="special-periods"
+        options={{
+          title: 'Takvim',
+          headerTitle: 'Takvim Yönetimi',
+          tabBarIcon: ({ color, focused }) => (
+            <AdminTabBarIcon
+              name="calendar-clear"
+              nameOutline="calendar-clear-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="halls"
         options={{
           title: 'Salonlar',

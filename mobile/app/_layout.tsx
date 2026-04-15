@@ -1,7 +1,8 @@
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import * as Notifications from 'expo-notifications';
+import { Ionicons } from '@expo/vector-icons';
 import { onEvent, AppEvents } from '../utils/events';
 import { handleApiError } from '../utils/apiError';
 import AppDialogHost from '../components/AppDialogHost';
@@ -25,6 +26,25 @@ Notifications.setNotificationHandler({
 
 export default function RootLayout() {
   const router = useRouter();
+  const [iconsReady, setIconsReady] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    Ionicons.loadFont()
+      .catch((e) => {
+        console.warn('Ionicons font yüklenemedi:', e);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIconsReady(true);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   useEffect(() => {
     const init = async () => {
       try {
@@ -73,6 +93,10 @@ export default function RootLayout() {
 
     return () => unsub();
   }, []);
+
+  if (!iconsReady) {
+    return null;
+  }
 
   return (
     <>
