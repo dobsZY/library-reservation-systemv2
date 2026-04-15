@@ -6,6 +6,7 @@ import { onEvent, AppEvents } from '../utils/events';
 import { handleApiError } from '../utils/apiError';
 import AppDialogHost from '../components/AppDialogHost';
 import { getToken } from '../api/auth';
+import { adminTheme } from '../constants/theme';
 
 /** Web dahil tüm platformlarda açılışın `app/index.tsx` üzerinden yapılmasını zorunlu kılar. */
 export const unstable_settings = {
@@ -88,6 +89,9 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ title: 'Giriş', headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        <Stack.Screen name="(staff)" options={{ headerShown: false }} />
+        <Stack.Screen name="notification-settings" options={{ title: 'Bildirim Ayarları' }} />
+        <Stack.Screen name="help-support" options={{ title: 'Yardım & Destek' }} />
         <Stack.Screen
           name="hall/[id]"
           options={{
@@ -98,6 +102,19 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen name="qr-scan" options={{ title: 'QR Kod Tara', presentation: 'modal' }} />
+        <Stack.Screen
+          name="table-qr-desk"
+          options={{ title: 'Masa QR Kontrolü', presentation: 'modal', headerShown: false }}
+        />
+        <Stack.Screen
+          name="masa-kontrol"
+          options={{
+            title: 'Masa kontrolü',
+            headerStyle: { backgroundColor: adminTheme.headerBackground },
+            headerTintColor: '#fff',
+            headerTitleStyle: { fontWeight: '600' },
+          }}
+        />
       </Stack>
     </>
   );

@@ -8,7 +8,7 @@ import {
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, borderRadius, spacing, shadows } from '../constants/theme';
+import { adminTheme, colors, borderRadius, spacing, shadows } from '../constants/theme';
 
 const MONTHS_TR = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -59,13 +59,16 @@ type Props = {
   value: string;
   onChange: (ymd: string) => void;
   placeholder?: string;
+  /** Admin ekranlarında bordo vurgu */
+  accent?: 'student' | 'admin';
 };
 
 export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
   function SingleDatePicker(
-    { label, value, onChange, placeholder = 'Tarih Seçiniz' },
+    { label, value, onChange, placeholder = 'Tarih Seçiniz', accent = 'student' },
     ref,
   ) {
+    const isAdmin = accent === 'admin';
     const [open, setOpen] = useState(false);
     const parsed = value ? parseYmd(value) : null;
     const [viewY, setViewY] = useState(() => parsed?.y ?? new Date().getFullYear());
@@ -154,7 +157,14 @@ export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
       <View style={styles.wrap}>
         <Text style={styles.label}>{label}</Text>
         <TouchableOpacity
-          style={styles.inputOuter}
+          style={[
+            styles.inputOuter,
+            isAdmin && {
+              backgroundColor: adminTheme.primaryLight,
+              borderWidth: 1,
+              borderColor: 'rgba(139, 26, 26, 0.14)',
+            },
+          ]}
           onPress={openModal}
           activeOpacity={0.85}
         >
@@ -225,14 +235,18 @@ export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
                           <View
                             style={[
                               styles.dayInner,
-                              selected && styles.daySelected,
+                              selected &&
+                                (isAdmin ? styles.daySelectedAdmin : styles.daySelectedStudent),
                             ]}
                           >
                             <Text
                               style={[
                                 styles.dayText,
                                 !cell.inMonth && styles.dayMuted,
-                                selected && styles.dayTextSelected,
+                                selected &&
+                                  (isAdmin
+                                    ? styles.dayTextSelectedAdmin
+                                    : styles.dayTextSelectedStudent),
                               ]}
                             >
                               {cell.d}
@@ -367,8 +381,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  daySelected: {
+  daySelectedStudent: {
     backgroundColor: colors.primary,
+  },
+  daySelectedAdmin: {
+    backgroundColor: adminTheme.primary,
   },
   dayText: {
     fontSize: 13,
@@ -379,8 +396,12 @@ const styles = StyleSheet.create({
     color: '#D1D5DB',
     fontWeight: '500',
   },
-  dayTextSelected: {
+  dayTextSelectedStudent: {
     color: colors.textPrimary,
+    fontWeight: '700',
+  },
+  dayTextSelectedAdmin: {
+    color: colors.white,
     fontWeight: '700',
   },
 });

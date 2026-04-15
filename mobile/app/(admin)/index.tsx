@@ -12,18 +12,27 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { adminApi, AdminOverview } from '../../api/admin';
 import { logout } from '../../api/auth';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 
-type AdminCard = {
+type DashboardCard = {
   key: string;
   title: string;
   value: number | string;
   icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  route: string;
+  accent: string;
+  iconBg: string;
+  /** Belirtilirse bu ekrana gider */
+  href?: string;
+  /** Varsayılan: masa kontrol; qr-desk: QR tarama sekmesi */
+  target?: 'masa-kontrol' | 'qr-desk';
 };
+
+const MASA_KONTROL_PATH = '/masa-kontrol';
+
+const PURPLE_QR = '#7C3AED';
+const PURPLE_QR_BG = '#EDE9FE';
 
 export default function AdminHomeScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
@@ -60,7 +69,6 @@ export default function AdminHomeScreen() {
     try {
       await logout();
     } finally {
-      // Alert onPress / web confirm sonrası replace her koşulda çalışsın
       goToLogin();
     }
   };
@@ -86,117 +94,211 @@ export default function AdminHomeScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#DC2626" />
+        <ActivityIndicator size="large" color={adminTheme.primary} />
       </View>
     );
   }
 
-  const cards: AdminCard[] = overview
+  const cards: DashboardCard[] = overview
     ? [
         {
           key: 'users',
           title: 'Toplam Kullanıcı',
           value: overview.totalUsers,
           icon: 'people',
-          color: '#3B82F6',
-          route: '/(admin)/users',
+          accent: '#3B82F6',
+          iconBg: '#DBEAFE',
+          href: '/(admin)/users',
         },
         {
           key: 'reservations-active',
           title: 'Aktif Rezervasyon',
           value: overview.activeReservations,
           icon: 'time',
-          color: '#22C55E',
-          route: '/(admin)/reservations?filter=active',
+          accent: '#22C55E',
+          iconBg: '#DCFCE7',
+          href: '/(admin)/reservations?filter=active',
         },
         {
           key: 'reservations-expired',
           title: 'Süresi Dolmuş',
           value: overview.noShowCount,
           icon: 'alert-circle',
-          color: '#EF4444',
-          route: '/(admin)/reservations?filter=expired',
+          accent: '#EF4444',
+          iconBg: '#FEE2E2',
+          href: '/(admin)/reservations?filter=expired',
+        },
+        {
+          key: 'reservations-cancelled',
+          title: 'İptal Edilen',
+          value: overview.cancelledReservations ?? 0,
+          icon: 'close-circle-outline',
+          accent: '#4F46E5',
+          iconBg: '#EEF2FF',
+          href: '/(admin)/reservations?filter=cancelled',
         },
         {
           key: 'occupancy',
           title: 'Doluluk Oranı',
           value: `%${overview.occupancyRate.toFixed(1)}`,
           icon: 'bar-chart',
-          color: '#F59E0B',
-          route: '/(admin)/halls',
+          accent: '#F59E0B',
+          iconBg: '#FEF3C7',
+          href: '/(admin)/halls',
+        },
+        {
+          key: 'qr-desk',
+          title: 'Masa QR tara',
+          value: '',
+          icon: 'qr-code',
+          accent: PURPLE_QR,
+          iconBg: PURPLE_QR_BG,
+          target: 'qr-desk',
         },
       ]
     : [];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
-    >
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Yönetici Paneli</Text>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-          <Ionicons name="log-out-outline" size={22} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+    <View style={styles.page}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
+      >
+        <View style={styles.grid}>
+          {cards.map((c) => {
+            const navigable = Boolean(c.href || c.target);
+            const cardBody = (
+              <>
+                <View
+                  style={[
+                    styles.iconCircle,
+                    c.target === 'qr-desk' && styles.iconCircleQr,
+                    { backgroundColor: c.iconBg },
+                  ]}
+                >
+                  <Ionicons
+                    name={c.icon}
+                    size={c.target === 'qr-desk' ? 30 : 22}
+                    color={c.accent}
+                  />
+                </View>
+                {c.target === 'qr-desk' ? (
+                  <View style={styles.cardValueSpacer} />
+                ) : (
+                  <Text style={styles.cardValue}>{c.value}</Text>
+                )}
+                <Text style={styles.cardTitle}>{c.title}</Text>
+              </>
+            );
+            if (!navigable) {
+              return (
+                <View key={c.key} style={styles.card} accessibilityLabel={c.title}>
+                  {cardBody}
+                </View>
+              );
+            }
+            return (
+              <TouchableOpacity
+                key={c.key}
+                style={styles.card}
+                activeOpacity={0.88}
+                onPress={() => {
+                  if (c.href) {
+                    router.push(c.href as any);
+                    return;
+                  }
+                  router.push(
+                    (c.target === 'qr-desk' ? '/(admin)/qr-desk' : MASA_KONTROL_PATH) as any,
+                  );
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={c.title}
+              >
+                {cardBody}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </ScrollView>
 
-      <View style={styles.grid}>
-        {cards.map((c) => (
-          <TouchableOpacity
-            key={c.key}
-            style={styles.card}
-            activeOpacity={0.8}
-            onPress={() => router.push(c.route as any)}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: c.color + '20' }]}>
-              <Ionicons name={c.icon} size={24} color={c.color} />
-            </View>
-            <Text style={styles.cardValue}>{c.value}</Text>
-            <Text style={styles.cardTitle}>{c.title}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+      <TouchableOpacity
+        onPress={handleLogout}
+        style={styles.logoutFab}
+        accessibilityRole="button"
+        accessibilityLabel="Çıkış yap"
+      >
+        <Ionicons name="log-out-outline" size={24} color={adminTheme.primary} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.lg, paddingBottom: 40 },
+  content: { padding: spacing.lg, paddingBottom: 88 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  greeting: { fontSize: 22, fontWeight: '700', color: colors.textPrimary },
-  logoutBtn: {
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    backgroundColor: '#FEE2E2',
+  logoutFab: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: spacing.xs,
+    padding: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: adminTheme.primaryLight,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: spacing.md,
+    justifyContent: 'space-between',
+    rowGap: spacing.md,
   },
   card: {
-    width: '47%',
+    width: '48%',
     backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.lg,
-    ...shadows.md,
+    borderRadius: 18,
+    paddingVertical: spacing.lg + 2,
+    paddingHorizontal: spacing.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  cardValue: { fontSize: 26, fontWeight: '700', color: colors.textPrimary },
-  cardTitle: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  iconCircleQr: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    marginBottom: spacing.md,
+  },
+  /** QR kartında sayı satırı yok; diğer kartlardaki başlık hizası için boşluk */
+  cardValueSpacer: {
+    minHeight: 34,
+  },
+  cardValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  cardTitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 6,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
 });

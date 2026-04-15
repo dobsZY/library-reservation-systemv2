@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,11 +15,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { adminApi, AdminHall, AdminTable } from '../../api/admin';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
+import { useBackofficeCapabilities } from '../../context/BackofficeCapabilitiesContext';
 
 export default function AdminHallsScreen() {
+  const { allowTableEdit } = useBackofficeCapabilities();
   const [halls, setHalls] = useState<AdminHall[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,6 +33,19 @@ export default function AdminHallsScreen() {
   const [editingTable, setEditingTable] = useState<AdminTable | null>(null);
   const [editForm, setEditForm] = useState({ positionX: '', positionY: '', width: '', height: '' });
   const [saving, setSaving] = useState(false);
+
+  const occupancySummary = useMemo(() => {
+    const totals = halls.reduce(
+      (acc, h) => {
+        acc.total += h.totalTables ?? 0;
+        acc.occupied += h.occupiedTables ?? 0;
+        return acc;
+      },
+      { total: 0, occupied: 0 },
+    );
+    const rate = totals.total > 0 ? (totals.occupied / totals.total) * 100 : 0;
+    return { ...totals, rate };
+  }, [halls]);
 
   const fetchHalls = useCallback(async () => {
     try {
@@ -104,7 +119,7 @@ export default function AdminHallsScreen() {
     if (loading) {
       return (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       );
     }
@@ -114,15 +129,47 @@ export default function AdminHallsScreen() {
         keyExtractor={(h) => h.id}
         style={styles.container}
         contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
+        ListHeaderComponent={
+          <View style={styles.dashboardCard}>
+            <Text style={styles.dashboardTitle}>Salon Doluluk Dashboard</Text>
+            <Text style={styles.dashboardSub}>
+              Toplam {occupancySummary.total} masanın {occupancySummary.occupied} tanesi dolu
+            </Text>
+            <View style={styles.dashboardProgressTrack}>
+              <View
+                style={[
+                  styles.dashboardProgressFill,
+                  { width: `${Math.max(0, Math.min(100, occupancySummary.rate))}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.dashboardRate}>Genel Doluluk: %{occupancySummary.rate.toFixed(1)}</Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.hallCard} onPress={() => selectHall(item)}>
             <View style={styles.hallIcon}>
-              <Ionicons name="business-outline" size={22} color="#DC2626" />
+              <Ionicons name="business-outline" size={22} color={adminTheme.primary} />
             </View>
             <View style={styles.hallInfo}>
               <Text style={styles.hallName}>{item.name}</Text>
               <Text style={styles.hallSub}>Kat {item.floor}</Text>
+              {typeof item.occupancyRate === 'number' && (
+                <>
+                  <Text style={styles.hallOccText}>
+                    %{item.occupancyRate.toFixed(1)} doluluk · {item.occupiedTables ?? 0}/{item.totalTables ?? 0} masa
+                  </Text>
+                  <View style={styles.hallProgressTrack}>
+                    <View
+                      style={[
+                        styles.hallProgressFill,
+                        { width: `${Math.max(0, Math.min(100, item.occupancyRate))}%` },
+                      ]}
+                    />
+                  </View>
+                </>
+              )}
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
           </TouchableOpacity>
@@ -141,7 +188,7 @@ export default function AdminHallsScreen() {
   return (
     <View style={styles.container}>
       <TouchableOpacity style={styles.backRow} onPress={() => setSelectedHall(null)}>
-        <Ionicons name="arrow-back" size={20} color="#DC2626" />
+        <Ionicons name="arrow-back" size={20} color={adminTheme.primary} />
         <Text style={styles.backText}>Salonlara Dön</Text>
       </TouchableOpacity>
 
@@ -149,7 +196,7 @@ export default function AdminHallsScreen() {
 
       {tablesLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       ) : (
         <FlatList
@@ -160,9 +207,13 @@ export default function AdminHallsScreen() {
             <View style={styles.tableCard}>
               <View style={styles.tableHeader}>
                 <Text style={styles.tableNum}>Masa {item.tableNumber}</Text>
-                <TouchableOpacity onPress={() => openEdit(item)}>
-                  <Ionicons name="create-outline" size={20} color="#3B82F6" />
-                </TouchableOpacity>
+                {allowTableEdit ? (
+                  <TouchableOpacity onPress={() => openEdit(item)}>
+                    <Ionicons name="create-outline" size={20} color="#3B82F6" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={{ width: 24 }} />
+                )}
               </View>
               <Text style={styles.tableDetail}>
                 Konum: ({item.positionX}, {item.positionY}) · Boyut: {item.width}×{item.height}
@@ -187,8 +238,8 @@ export default function AdminHallsScreen() {
         />
       )}
 
-      {/* Edit Modal */}
-      <Modal visible={!!editingTable} transparent animationType="slide">
+      {/* Edit Modal — yalnızca yönetici */}
+      <Modal visible={allowTableEdit && !!editingTable} transparent animationType="slide">
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
             <ScrollView>
@@ -243,7 +294,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.md,
@@ -251,6 +302,57 @@ const styles = StyleSheet.create({
   hallInfo: { flex: 1 },
   hallName: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   hallSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  hallOccText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  hallProgressTrack: {
+    marginTop: 6,
+    height: 6,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+    width: '100%',
+  },
+  hallProgressFill: {
+    height: '100%',
+    backgroundColor: adminTheme.primary,
+  },
+  dashboardCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  dashboardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  dashboardSub: {
+    marginTop: 4,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  dashboardProgressTrack: {
+    marginTop: spacing.sm,
+    height: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F1F5F9',
+  },
+  dashboardProgressFill: {
+    height: '100%',
+    backgroundColor: adminTheme.primary,
+  },
+  dashboardRate: {
+    marginTop: spacing.xs,
+    fontSize: 12,
+    fontWeight: '700',
+    color: adminTheme.primary,
+  },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -258,7 +360,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: 0,
   },
-  backText: { fontSize: 14, fontWeight: '600', color: '#DC2626' },
+  backText: { fontSize: 14, fontWeight: '600', color: adminTheme.primary },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -321,7 +423,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: borderRadius.md,
-    backgroundColor: '#DC2626',
+    backgroundColor: adminTheme.primary,
     alignItems: 'center',
   },
   modalSaveText: { fontSize: 15, fontWeight: '600', color: '#fff' },

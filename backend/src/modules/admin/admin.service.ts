@@ -1,8 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import {
   User,
+  UserRole,
   UserSession,
   Reservation,
   ReservationStatus,
@@ -34,6 +40,15 @@ export class AdminService {
 
   // ── Users ──────────────────────────────────────────────────
 
+  /**
+   * Geçiş dönemi uyumluluğu:
+   * - Kalıcı model: isSuperAdmin alanı
+   * - Varsayılan süper admin hesabı: admin001
+   */
+  private isSuperAdminUser(user: User): boolean {
+    return !!user.isSuperAdmin || user.studentNumber === 'admin001';
+  }
+
   async getUsers(): Promise<any[]> {
     const users = await this.userRepository.find({ order: { createdAt: 'DESC' } });
     const activeSessions = await this.sessionRepository
@@ -48,16 +63,88 @@ export class AdminService {
       studentNumber: u.studentNumber,
       fullName: u.fullName,
       role: u.role,
+      isSuperAdmin: this.isSuperAdminUser(u),
       isActive: u.isActive,
       hasActiveSession: activeUserIds.has(u.id),
       createdAt: u.createdAt,
     }));
   }
 
-  async forceLogout(userId: string): Promise<void> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    if (!user) throw new NotFoundException('Kullanıcı bulunamadı.');
+  async forceLogout(userId: string, actorUserId: string): Promise<void> {
+    const [actor, targetUser] = await Promise.all([
+      this.userRepository.findOne({ where: { id: actorUserId } }),
+      this.userRepository.findOne({ where: { id: userId } }),
+    ]);
+    if (!actor) throw new NotFoundException('İşlemi yapan yönetici bulunamadı.');
+    if (!targetUser) throw new NotFoundException('Kullanıcı bulunamadı.');
+
+    const targetIsAdmin = targetUser.role === UserRole.ADMIN;
+    if (targetIsAdmin && !this.isSuperAdminUser(actor)) {
+      throw new ForbiddenException(
+        'Yönetici oturumlarını yalnızca süper admin sonlandırabilir.',
+      );
+    }
+
     await this.sessionRepository.delete({ userId });
+  }
+
+  async updateUserRole(targetUserId: string, newRole: UserRole, actorUserId: string): Promise<any> {
+    const [actor, target] = await Promise.all([
+      this.userRepository.findOne({ where: { id: actorUserId } }),
+      this.userRepository.findOne({ where: { id: targetUserId } }),
+    ]);
+
+    if (!actor) throw new NotFoundException('İşlemi yapan yönetici bulunamadı.');
+    if (!target) throw new NotFoundException('Kullanıcı bulunamadı.');
+
+    if (targetUserId === actorUserId) {
+      throw new BadRequestException('Kendi rolünüzü değiştiremezsiniz.');
+    }
+
+    const touchesAdminPermission =
+      target.role === UserRole.ADMIN || newRole === UserRole.ADMIN;
+
+    if (touchesAdminPermission && !this.isSuperAdminUser(actor)) {
+      throw new ForbiddenException(
+        'Admin yetkilerini yalnızca süper admin değiştirebilir.',
+      );
+    }
+
+    if (this.isSuperAdminUser(target)) {
+      throw new ForbiddenException(
+        'Süper admin rol/yetki değişikliği yapılamaz.',
+      );
+    }
+
+    if (target.role === UserRole.ADMIN && newRole !== UserRole.ADMIN) {
+      const adminCount = await this.userRepository.count({ where: { role: UserRole.ADMIN } });
+      if (adminCount <= 1) {
+        throw new BadRequestException('Sistemde en az bir yönetici kalmalıdır.');
+      }
+    }
+
+    if (target.role === newRole) {
+      throw new BadRequestException('Kullanıcı zaten bu role sahip.');
+    }
+
+    target.role = newRole;
+    if (newRole !== UserRole.ADMIN) {
+      target.isSuperAdmin = false;
+    }
+    await this.userRepository.save(target);
+    await this.sessionRepository.delete({ userId: targetUserId });
+
+    const hasActiveSession = false;
+    return {
+      id: target.id,
+      studentNumber: target.studentNumber,
+      fullName: target.fullName,
+      role: target.role,
+      isSuperAdmin: this.isSuperAdminUser(target),
+      isActive: target.isActive,
+      hasActiveSession,
+      createdAt: target.createdAt,
+    };
   }
 
   // ── Reservations ───────────────────────────────────────────
@@ -114,10 +201,67 @@ export class AdminService {
 
   // ── Halls / Tables ─────────────────────────────────────────
 
-  async getHalls(): Promise<Hall[]> {
-    return this.hallRepository.find({
+  async getHalls(): Promise<
+    Array<
+      Hall & {
+        totalTables: number;
+        occupiedTables: number;
+        availableTables: number;
+        occupancyRate: number;
+      }
+    >
+  > {
+    const halls = await this.hallRepository.find({
       where: { isActive: true },
       order: { displayOrder: 'ASC', name: 'ASC' },
+    });
+
+    if (halls.length === 0) {
+      return [];
+    }
+
+    const hallIds = halls.map((h) => h.id);
+    const tables = await this.tableRepository.find({
+      where: { hallId: In(hallIds), isActive: true },
+      select: ['id', 'hallId'],
+    });
+
+    const totalByHall = new Map<string, number>();
+    for (const t of tables) {
+      totalByHall.set(t.hallId, (totalByHall.get(t.hallId) ?? 0) + 1);
+    }
+
+    const now = new Date();
+    const occupiedRaw = await this.tableLockRepository
+      .createQueryBuilder('l')
+      .innerJoin('tables', 't', 't.id = l.table_id')
+      .select('t.hall_id', 'hallId')
+      .addSelect('COUNT(DISTINCT l.table_id)', 'occupiedCount')
+      .where('l.status = :status', { status: LockStatus.ACTIVE })
+      .andWhere('l.lock_start <= :now', { now })
+      .andWhere('l.lock_end > :now', { now })
+      .andWhere('t.is_active = true')
+      .andWhere('t.hall_id IN (:...hallIds)', { hallIds })
+      .groupBy('t.hall_id')
+      .getRawMany<{ hallId: string; occupiedCount: string }>();
+
+    const occupiedByHall = new Map<string, number>();
+    for (const row of occupiedRaw) {
+      occupiedByHall.set(row.hallId, Number(row.occupiedCount) || 0);
+    }
+
+    return halls.map((hall) => {
+      const totalTables = totalByHall.get(hall.id) ?? 0;
+      const occupiedTables = occupiedByHall.get(hall.id) ?? 0;
+      const availableTables = Math.max(0, totalTables - occupiedTables);
+      const occupancyRate = totalTables > 0 ? (occupiedTables / totalTables) * 100 : 0;
+      return {
+        ...hall,
+        totalTables,
+        occupiedTables,
+        availableTables,
+        occupancyRate,
+      };
     });
   }
 
@@ -165,20 +309,25 @@ export class AdminService {
     totalReservations: number;
     activeReservations: number;
     noShowCount: number;
+    cancelledReservations: number;
     occupancyRate: number;
   }> {
     const now = new Date();
 
-    const [totalUsers, totalReservations, activeReservations, noShowCount] = await Promise.all([
-      this.userRepository.count(),
-      this.reservationRepository.count(),
-      this.reservationRepository.count({
-        where: { status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]) },
-      }),
-      this.reservationRepository.count({
-        where: { status: In([ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED]) },
-      }),
-    ]);
+    const [totalUsers, totalReservations, activeReservations, noShowCount, cancelledReservations] =
+      await Promise.all([
+        this.userRepository.count(),
+        this.reservationRepository.count(),
+        this.reservationRepository.count({
+          where: { status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]) },
+        }),
+        this.reservationRepository.count({
+          where: { status: In([ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED]) },
+        }),
+        this.reservationRepository.count({
+          where: { status: ReservationStatus.CANCELLED },
+        }),
+      ]);
 
     const totalTables = await this.tableRepository.count({ where: { isActive: true } });
     const occupiedCount = await this.tableLockRepository
@@ -190,6 +339,13 @@ export class AdminService {
 
     const occupancyRate = totalTables > 0 ? (occupiedCount / totalTables) * 100 : 0;
 
-    return { totalUsers, totalReservations, activeReservations, noShowCount, occupancyRate };
+    return {
+      totalUsers,
+      totalReservations,
+      activeReservations,
+      noShowCount,
+      cancelledReservations,
+      occupancyRate,
+    };
   }
 }

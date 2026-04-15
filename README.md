@@ -164,34 +164,50 @@ library-reservation-system/
 
 ### Gereksinimler
 
-- Node.js 18+
+- Node.js 20+ (önerilen)
 - PostgreSQL 14+
 - Redis 7+
 - Docker & Docker Compose
-- pnpm (önerilen)
+- pnpm 10+
+
+### 0. Ön Kontrol (Önemli)
+
+Windows kullanıyorsanız önce **Docker Desktop uygulamasını açın** ve engine'in "running" durumda olduğunu doğrulayın.
+
+```bash
+node -v
+pnpm -v
+docker --version
+docker compose version
+```
 
 ### 1. Repository'yi Klonla
 
-```bash
-git clone https://github.com/your-username/library-reservation-system.git
-cd library-reservation-system
-```
-
-### 2. Docker Servislerini Başlat
+### 2. Docker Servislerini Başlat (PostgreSQL + Redis)
 
 ```bash
-docker-compose up -d
+docker compose up -d
+docker compose ps
 ```
+
+Başarılı durumda aşağıdaki portlar dolu olmalıdır:
+
+- PostgreSQL: `localhost:5433`
+- Redis: `localhost:6380`
+- pgAdmin: `localhost:5050`
+- Redis Commander: `localhost:8081`
 
 ### 3. Backend Kurulumu
 
 ```bash
 cd backend
+cp .env.example .env
 pnpm install
+pnpm run build
 pnpm run start:dev
 ```
 
-Backend: http://localhost:3000
+Backend: http://localhost:3000  
 Swagger: http://localhost:3000/api/docs
 
 ### 4. Web Frontend (Staff Dashboard)
@@ -199,6 +215,7 @@ Swagger: http://localhost:3000/api/docs
 ```bash
 cd frontend
 pnpm install
+pnpm run build
 pnpm run dev
 ```
 
@@ -208,11 +225,33 @@ Web Dashboard: http://localhost:5173
 
 ```bash
 cd mobile
-npm install
-npx expo start
+pnpm install
+pnpm run typecheck
+pnpm run start
 ```
 
 Expo Go uygulamasını telefonuna indir ve QR kodu tara.
+
+### 6. Bağlantı Bilgileri (SQL/Redis)
+
+`backend/.env` dosyasındaki varsayılan değerler `docker-compose.yml` ile uyumludur:
+
+```env
+DB_HOST=localhost
+DB_PORT=5433
+DB_USERNAME=library_user
+DB_PASSWORD=library_pass_2025
+DB_DATABASE=library_reservation
+
+REDIS_HOST=localhost
+REDIS_PORT=6380
+```
+
+### 7. Sorun Giderme
+
+- `docker compose up -d` sırasında `open //./pipe/dockerDesktopLinuxEngine` hatası alırsan Docker Desktop kapalıdır; uygulamayı açıp tekrar dene.
+- `5432 already in use` hatasında bu proje için zaten `5433` kullanılıyor; gerekirse farklı bir boş porta çekebilirsin.
+- Backend DB'ye bağlanamazsa `backend/.env` içindeki DB alanlarını tekrar kontrol et.
 
 ---
 

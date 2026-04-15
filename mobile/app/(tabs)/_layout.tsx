@@ -3,27 +3,58 @@ import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
 import { colors } from '../../constants/theme';
 
+const TAB_ICON_BOX = 40;
+
+function TabBarIcon({
+  name,
+  nameOutline,
+  focused,
+  inactiveColor,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  nameOutline: keyof typeof Ionicons.glyphMap;
+  focused: boolean;
+  inactiveColor: string;
+}) {
+  const iconName = focused ? name : nameOutline;
+  // Aktif sekmede tabBarActiveTintColor ile aynı sarı ikon, açık sarı zemin üzerinde kayboluyor ve
+  // Android (Fabric) bazen sarmalayıcı View'da kırpma yapıp ikonu "bozuk çizgi" gibi gösteriyor.
+  const iconColor = focused ? colors.primaryDark : inactiveColor;
+
+  return (
+    <View
+      style={[
+        styles.iconWrap,
+        focused && styles.iconWrapActive,
+      ]}
+    >
+      <Ionicons name={iconName} size={24} color={iconColor} />
+    </View>
+  );
+}
+
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.primaryDark,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopWidth: 0,
-          height: 70,
-          paddingBottom: 10,
-          paddingTop: 10,
+          height: 72,
+          paddingBottom: 8,
+          paddingTop: 6,
           ...styles.tabBarShadow,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '600',
-          marginTop: 4,
+          marginTop: 2,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 2,
+          minWidth: 0,
         },
         headerStyle: {
           backgroundColor: colors.primary,
@@ -43,10 +74,8 @@ export default function TabLayout() {
         options={{
           title: 'Salonlar',
           headerTitle: 'Kütüphane Modülü',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? "library" : "library-outline"} size={24} color={color} />
-            </View>
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="library" nameOutline="library-outline" focused={focused} inactiveColor={color} />
           ),
         }}
       />
@@ -55,22 +84,18 @@ export default function TabLayout() {
         options={{
           title: 'Kroki',
           headerTitle: 'Salon Seçimi',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? "map" : "map-outline"} size={24} color={color} />
-            </View>
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="map" nameOutline="map-outline" focused={focused} inactiveColor={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="reservation"
         options={{
-          title: 'Rezervasyonlarım',
+          title: 'Rezervasyon',
           headerTitle: 'Rezervasyonlarım',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? "calendar" : "calendar-outline"} size={24} color={color} />
-            </View>
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="calendar" nameOutline="calendar-outline" focused={focused} inactiveColor={color} />
           ),
         }}
       />
@@ -79,10 +104,8 @@ export default function TabLayout() {
         options={{
           title: 'Hesabım',
           headerTitle: 'Hesap Bilgileri',
-          tabBarIcon: ({ color, size, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? "person" : "person-outline"} size={24} color={color} />
-            </View>
+          tabBarIcon: ({ color, focused }) => (
+            <TabBarIcon name="person" nameOutline="person-outline" focused={focused} inactiveColor={color} />
           ),
         }}
       />
@@ -106,9 +129,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  activeTab: {
-    backgroundColor: colors.primaryLight,
-    padding: 8,
+  iconWrap: {
+    width: TAB_ICON_BOX,
+    height: TAB_ICON_BOX,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 12,
+    overflow: 'visible',
+  },
+  iconWrapActive: {
+    backgroundColor: colors.primaryLight,
   },
 });

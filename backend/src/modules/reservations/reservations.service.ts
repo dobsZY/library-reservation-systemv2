@@ -10,6 +10,7 @@ import {
   Repository,
   DataSource,
   In,
+  Not,
   LessThan,
   MoreThan,
   Between,
@@ -34,6 +35,7 @@ const MAX_EXTENSION_COUNT = 2;
 const EXTENSION_DURATION_HOURS = 1;
 const QR_TIMEOUT_MINUTES = 30;
 const EXTENSION_WINDOW_MINUTES = 15;
+const LATE_RESERVATION_GRACE_MINUTES = 30;
 const MAX_POTENTIAL_HOURS = 3;
 
 @Injectable()
@@ -59,9 +61,10 @@ export class ReservationsService {
   // ──────────────────────────────────────────────────────────────
   async create(userId: string, dto: CreateReservationDto): Promise<Reservation> {
     const startTime = new Date(dto.startTime);
+    const now = new Date();
 
     // 1. Tarih kontrolu: yalnizca bugun ve gecmis degil
-    this.validateSameDay(startTime);
+    this.validateSameDayWithGrace(startTime, now);
 
     // 2. Calisma saatleri kontrolu (startTime gecmis olamaz kontrolu de burada)
     await this.validateOperatingHours(startTime, INITIAL_DURATION_HOURS);
@@ -86,7 +89,11 @@ export class ReservationsService {
     // 5. Transaction ile cakisma kontrolu + olusturma
     const endTime = new Date(startTime.getTime() + INITIAL_DURATION_HOURS * 60 * 60 * 1000);
     const lockEndTime = new Date(startTime.getTime() + MAX_POTENTIAL_HOURS * 60 * 60 * 1000);
-    const qrDeadline = new Date(startTime.getTime() + QR_TIMEOUT_MINUTES * 60 * 1000);
+    // Gec rezervasyonda kullanicinin en azindan kisa bir QR penceresi kalir;
+    // normal durumda deadline yine slot baslangicindan +30 dakikadir.
+    const slotQrDeadline = new Date(startTime.getTime() + QR_TIMEOUT_MINUTES * 60 * 1000);
+    const minQrWindowEnd = new Date(now.getTime() + 5 * 60 * 1000);
+    const qrDeadline = slotQrDeadline > minQrWindowEnd ? slotQrDeadline : minQrWindowEnd;
     const reservationDate = new Date(startTime);
     reservationDate.setHours(0, 0, 0, 0);
 
@@ -224,14 +231,13 @@ export class ReservationsService {
         where: {
           tableId: reservation.tableId,
           status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
-          id: MoreThan(''), // dummy - asagida NOT kosulu
+          id: Not(reservationId),
           startTime: LessThan(newEndTime),
           endTime: MoreThan(reservation.endTime),
         },
       });
 
-      // Kendi rezervasyonumuzu haric tut
-      if (conflictingReservation && conflictingReservation.id !== reservationId) {
+      if (conflictingReservation) {
         throw new ConflictException('Uzatma suresi baska bir rezervasyonla cakisiyor.');
       }
 
@@ -436,8 +442,7 @@ export class ReservationsService {
   // ──────────────────────────────────────────────────────────────
   // Validasyonlar (private)
   // ──────────────────────────────────────────────────────────────
-  private validateSameDay(startTime: Date): void {
-    const now = new Date();
+  private validateSameDayWithGrace(startTime: Date, now: Date): void {
     
     // Local timezone'da bugunun baslangici (00:00:00)
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -455,9 +460,18 @@ export class ReservationsService {
       );
     }
 
-    // Gecmis kontrolu: startTime simdiden once olamaz
+    // Gecmis kontrolu:
+    // Slot baslangici gecmisse sadece ilk 30 dakika icinde rezervasyona izin ver.
     if (startTime.getTime() < now.getTime()) {
-      throw new BadRequestException('Gecmis bir saat icin rezervasyon yapilamaz.');
+      const graceDeadline = new Date(
+        startTime.getTime() + LATE_RESERVATION_GRACE_MINUTES * 60 * 1000,
+      );
+      if (now > graceDeadline) {
+        throw new BadRequestException(
+          `Bu saat dilimi icin rezervasyon suresi doldu. ` +
+            `Sadece baslangictan sonraki ilk ${LATE_RESERVATION_GRACE_MINUTES} dakika icinde rezervasyon yapilabilir.`,
+        );
+      }
     }
   }
 

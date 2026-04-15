@@ -5,6 +5,7 @@ export interface AdminUser {
   studentNumber: string;
   fullName: string;
   role: string;
+  isSuperAdmin?: boolean;
   isActive: boolean;
   hasActiveSession: boolean;
   createdAt: string;
@@ -32,6 +33,10 @@ export interface AdminHall {
   name: string;
   floor: number;
   isActive: boolean;
+  totalTables?: number;
+  occupiedTables?: number;
+  availableTables?: number;
+  occupancyRate?: number;
 }
 
 export interface AdminTable {
@@ -50,13 +55,18 @@ export interface AdminOverview {
   totalReservations: number;
   activeReservations: number;
   noShowCount: number;
+  cancelledReservations: number;
   occupancyRate: number;
 }
+
+export type AdminUserRole = 'student' | 'staff' | 'admin';
 
 export const adminApi = {
   getUsers: () => apiClient.get<AdminUser[]>('/admin/users'),
   forceLogout: (userId: string) =>
     apiClient.post<{ message: string }>(`/admin/users/${userId}/force-logout`, {}),
+  updateUserRole: (userId: string, role: AdminUserRole) =>
+    apiClient.patch<AdminUser>(`/admin/users/${userId}/role`, { role }),
 
   getReservations: (status?: string) => {
     const qs = status ? `?status=${status}` : '';

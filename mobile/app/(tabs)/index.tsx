@@ -4,9 +4,9 @@ import {
   StyleSheet, 
   ScrollView, 
   TouchableOpacity,
-  Pressable,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useEffect, useState, useCallback, useRef } from 'react';
@@ -27,8 +27,11 @@ export default function HomeScreen() {
   const [halls, setHalls] = useState<Hall[]>([]);
   const [hasActiveReservation, setHasActiveReservation] = useState(false);
   const [activeReservation, setActiveReservation] = useState<Reservation | null>(null);
+  const [extensionBlockedByNextReservation, setExtensionBlockedByNextReservation] =
+    useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
   const [cancelling, setCancelling] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const expiryEmittedRef = useRef<string | null>(null); // Hangi rezervasyon için süre doldu emiti yapıldığını takip et
 
@@ -44,6 +47,7 @@ export default function HomeScreen() {
       setHalls(hallsList);
       setHasActiveReservation(!!status?.hasActiveReservation);
       setActiveReservation(status?.activeReservation ?? null);
+      setExtensionBlockedByNextReservation(!!status?.extensionBlockedByNextReservation);
     } catch (error: any) {
       if (handleApiError(error)) return;
       console.warn('Ana sayfa verileri alınamadı:', error);
@@ -130,30 +134,51 @@ export default function HomeScreen() {
     fetchData();
   }, [fetchData]);
 
-  const doCancelReservation = async () => {
-    if (!activeReservation) return;
+  const doCancelReservation = async (reservationId: string) => {
+    if (!reservationId) return;
     setCancelling(true);
     try {
-      await reservationsApi.cancel(activeReservation.id);
+      await reservationsApi.cancel(reservationId);
       setHasActiveReservation(false);
       setActiveReservation(null);
       emitEvent(AppEvents.RESERVATION_CHANGED);
       emitEvent(AppEvents.STATS_CHANGED);
       await fetchData();
-      showAppDialog('Başarılı', 'Rezervasyonunuz iptal edildi.');
+      Alert.alert('Başarılı', 'Rezervasyonunuz iptal edildi.');
     } catch (e: any) {
       if (handleApiError(e)) return;
       const msg = typeof e?.message === 'string' ? e.message : 'Rezervasyon iptal edilemedi.';
-      showAppDialog('Hata', msg);
+      Alert.alert('Hata', msg);
     } finally {
       setCancelling(false);
     }
   };
 
+  const doAcknowledgeScheduledEnd = async (blockedByNext: boolean) => {
+    if (!activeReservation) return;
+    setEndingSession(true);
+    try {
+      await reservationsApi.acknowledgeScheduledEnd(activeReservation.id);
+      emitEvent(AppEvents.RESERVATION_CHANGED);
+      emitEvent(AppEvents.STATS_CHANGED);
+      await fetchData();
+      const infoMessage = blockedByNext
+        ? 'Rezervasyonunuz Başarılı Şekilde Sonlandırıldı'
+        : 'Rezervasyonunuzu uzatma talebinde bulunmadınız.Rezervasyonunuz başarıyla sonlandırılmıştır.';
+      showAppDialog('Bilgi', infoMessage);
+    } catch (e: any) {
+      if (handleApiError(e)) return;
+      showAppDialog('Hata', typeof e?.message === 'string' ? e.message : 'İşlem gerçekleştirilemedi.');
+    } finally {
+      setEndingSession(false);
+    }
+  };
+
   const handleCancelReservation = () => {
     if (!activeReservation) return;
+    const reservationId = activeReservation.id;
 
-    showAppDialog(
+    Alert.alert(
       'Rezervasyonu İptal Et',
       'Rezervasyonunuzu iptal etmek istediğinize emin misiniz?',
       [
@@ -161,10 +186,9 @@ export default function HomeScreen() {
         {
           text: 'Evet, İptal Et',
           style: 'destructive',
-          onPress: () => void doCancelReservation(),
+          onPress: () => void doCancelReservation(reservationId),
         },
       ],
-      'warning',
     );
   };
 
@@ -213,6 +237,8 @@ export default function HomeScreen() {
   return (
     <ScrollView 
       style={styles.container}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
       }
@@ -322,12 +348,14 @@ export default function HomeScreen() {
             </TouchableOpacity>
           )}
 
-          <Pressable
+          <TouchableOpacity
             style={styles.activeButton}
             onPress={handleCancelReservation}
             disabled={cancelling}
-            hitSlop={12}
-            android_ripple={{ color: 'rgba(220,38,38,0.10)' }}
+            activeOpacity={0.75}
+            hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+            accessibilityRole="button"
+            accessibilityLabel="Rezervasyonu iptal et"
           >
             {cancelling ? (
               <ActivityIndicator size="small" color={colors.danger} />
@@ -337,7 +365,7 @@ export default function HomeScreen() {
                 <Text style={styles.activeButtonText}>Rezervasyonu İptal Et</Text>
               </>
             )}
-          </Pressable>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -704,6 +732,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: spacing.md,
+    minHeight: 48,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },

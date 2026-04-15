@@ -9,14 +9,16 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { adminApi, AdminReservation } from '../../api/admin';
-import { colors, spacing, borderRadius, shadows } from '../../constants/theme';
+import { adminTheme, colors, spacing, borderRadius, shadows } from '../../constants/theme';
 import { handleApiError } from '../../utils/apiError';
 import { showAppDialog } from '../../utils/appDialogController';
 import { SingleDatePicker } from '../../components/SingleDatePicker';
+import { useBackofficeCapabilities } from '../../context/BackofficeCapabilitiesContext';
 
 const FILTERS = [
   { key: '', label: 'Tümü' },
@@ -26,13 +28,25 @@ const FILTERS = [
   { key: 'expired', label: 'Süresi Dolmuş' },
 ];
 
-const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  reserved: { bg: '#DBEAFE', fg: '#2563EB' },
-  checked_in: { bg: '#DCFCE7', fg: '#16A34A' },
-  completed: { bg: '#F3F4F6', fg: '#6B7280' },
-  cancelled: { bg: '#FEE2E2', fg: '#DC2626' },
-  expired: { bg: '#F3F4F6', fg: '#9CA3AF' },
+/**
+ * Olumlu: yeşil tonları (tamamlandı, check-in).
+ * Nötr-bilgi: mavi (rezerve).
+ * Olumsuz-iptal: bordo + açık pembe (admin teması).
+ * Olumsuz-süre: gri (süresi doldu).
+ * Olumsuz-gelmedi: amber (no_show).
+ */
+const STATUS_BADGE: Record<string, { label: string; bg: string; fg: string }> = {
+  reserved: { label: 'Rezerve', bg: colors.infoLight, fg: '#1D4ED8' },
+  checked_in: { label: 'Check-in yapıldı', bg: colors.successLight, fg: colors.successDark },
+  completed: { label: 'Tamamlandı', bg: colors.successLight, fg: '#166534' },
+  cancelled: { label: 'İptal edildi', bg: adminTheme.primaryLight, fg: adminTheme.primary },
+  expired: { label: 'Süresi doldu', bg: '#F1F5F9', fg: '#64748B' },
+  no_show: { label: 'Gelmedi', bg: colors.warningLight, fg: '#B45309' },
 };
+
+function getStatusBadge(status: string) {
+  return STATUS_BADGE[status] ?? STATUS_BADGE.expired;
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -44,6 +58,7 @@ function formatDate(iso: string): string {
 }
 
 export default function AdminReservationsScreen() {
+  const { allowCancelReservation } = useBackofficeCapabilities();
   const { filter: routeFilter } = useLocalSearchParams<{ filter?: string }>();
   const [reservations, setReservations] = useState<AdminReservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,9 +78,19 @@ export default function AdminReservationsScreen() {
     }
   }, [routeFilter]);
 
+  const hasActiveSearch = useMemo(() => {
+    return (
+      studentNumberQuery.trim().length > 0 ||
+      fullNameQuery.trim().length > 0 ||
+      dateQuery.trim().length > 0
+    );
+  }, [studentNumberQuery, fullNameQuery, dateQuery]);
+
+  /** Arama varken API status filtresi yok — tüm rezervasyonlar gelir; liste Tümü gibi davranır. */
   const fetchReservations = useCallback(async () => {
     try {
-      const data = await adminApi.getReservations(filter || undefined);
+      const apiStatus = hasActiveSearch ? undefined : filter || undefined;
+      const data = await adminApi.getReservations(apiStatus);
       setReservations(data);
     } catch (e: any) {
       if (handleApiError(e)) return;
@@ -74,12 +99,18 @@ export default function AdminReservationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [filter]);
+  }, [filter, hasActiveSearch]);
 
   useEffect(() => {
     setLoading(true);
     fetchReservations();
   }, [fetchReservations]);
+
+  useEffect(() => {
+    if (hasActiveSearch && filter !== '') {
+      setFilter('');
+    }
+  }, [hasActiveSearch, filter]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -116,7 +147,7 @@ export default function AdminReservationsScreen() {
       res.status === 'reserved' || res.status === 'checked_in';
 
     if (!isActive) {
-      showAppDialog('Bilgi', 'Bu rezervasyon iptal edilemez.');
+      Alert.alert('Bilgi', 'Bu rezervasyon iptal edilemez.');
       return;
     }
 
@@ -126,41 +157,35 @@ export default function AdminReservationsScreen() {
       setCancelLoading(res.id);
       try {
         await adminApi.cancelReservation(res.id);
-        showAppDialog('Başarılı', 'Rezervasyon iptal edildi.');
+        Alert.alert('Başarılı', 'Rezervasyon iptal edildi.');
         fetchReservations();
       } catch (e: any) {
         if (handleApiError(e)) return;
-        showAppDialog('Hata', e?.message || 'İşlem başarısız.');
+        Alert.alert('Hata', e?.message || 'İşlem başarısız.');
       } finally {
         setCancelLoading(null);
       }
     };
 
-    showAppDialog(
-      'Rezervasyonu İptal Et',
-      message,
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'İptal Et',
-          style: 'destructive',
-          onPress: () => void doCancel(),
-        },
-      ],
-      'warning',
-    );
+    Alert.alert('Rezervasyonu İptal Et', message, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'İptal Et',
+        style: 'destructive',
+        onPress: () => void doCancel(),
+      },
+    ]);
   };
 
   const renderItem = ({ item }: { item: AdminReservation }) => {
-    // UI'da no_show ve expired'i tek kategori gibi gösteriyoruz.
-    const displayStatus = item.status === 'no_show' ? 'expired' : item.status;
     const isAdminCancelled =
       item.status === 'cancelled' &&
       typeof item.cancelledReason === 'string' &&
       item.cancelledReason.toLowerCase().includes('yönetici');
-    const sc = STATUS_COLORS[displayStatus] || STATUS_COLORS.expired;
+    const badge = getStatusBadge(item.status);
+    const statusLabel = isAdminCancelled ? 'İptal edildi (yönetici)' : badge.label;
     const isCancelable =
-      item.status === 'reserved' || item.status === 'checked_in';
+      allowCancelReservation && (item.status === 'reserved' || item.status === 'checked_in');
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -168,9 +193,9 @@ export default function AdminReservationsScreen() {
             <Text style={styles.cardName}>{item.user?.fullName || '—'}</Text>
             <Text style={styles.cardSub}>{item.user?.studentNumber || ''}</Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-            <Text style={[styles.statusText, { color: sc.fg }]}>
-              {isAdminCancelled ? 'İPTAL (ADMIN)' : displayStatus.toUpperCase()}
+          <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+            <Text style={[styles.statusText, { color: badge.fg }]} numberOfLines={2}>
+              {statusLabel}
             </Text>
           </View>
         </View>
@@ -193,10 +218,10 @@ export default function AdminReservationsScreen() {
             disabled={cancelLoading === item.id}
           >
             {cancelLoading === item.id ? (
-              <ActivityIndicator size="small" color="#DC2626" />
+              <ActivityIndicator size="small" color={adminTheme.primary} />
             ) : (
               <>
-                <Ionicons name="close-circle-outline" size={16} color="#DC2626" />
+                <Ionicons name="close-circle-outline" size={16} color={adminTheme.primary} />
                 <Text style={styles.cancelText}>İptal Et</Text>
               </>
             )}
@@ -218,7 +243,12 @@ export default function AdminReservationsScreen() {
           renderItem={({ item: f }) => (
             <TouchableOpacity
               style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
-              onPress={() => setFilter(f.key)}
+              onPress={() => {
+                if (f.key !== filter) {
+                  clearSearchFilters();
+                }
+                setFilter(f.key);
+              }}
             >
               <Text
                 numberOfLines={1}
@@ -233,7 +263,7 @@ export default function AdminReservationsScreen() {
 
       {loading ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color="#DC2626" />
+          <ActivityIndicator size="large" color={adminTheme.primary} />
         </View>
       ) : (
         <FlatList
@@ -241,7 +271,7 @@ export default function AdminReservationsScreen() {
           keyExtractor={(r) => r.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#DC2626']} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[adminTheme.primary]} />}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
@@ -274,7 +304,7 @@ export default function AdminReservationsScreen() {
           <View style={styles.searchModalCard}>
             <View style={styles.searchModalHeader}>
               <Text style={styles.searchModalTitle}>Filtreleme / Arama</Text>
-              <TouchableOpacity onPress={() => setIsSearchModalOpen(false)}>
+              <TouchableOpacity onPress={() => setIsSearchModalOpen(false)} hitSlop={10}>
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -303,22 +333,28 @@ export default function AdminReservationsScreen() {
               <TouchableOpacity
                 onPress={() => setDateQuery('')}
                 style={styles.resetDateBtn}
+                activeOpacity={0.85}
               >
-                <Ionicons name="calendar-clear-outline" size={16} color={colors.warning} />
+                <Ionicons name="calendar-outline" size={18} color={adminTheme.primary} />
                 <Text style={styles.resetDateText}>Tarihi Sıfırla</Text>
               </TouchableOpacity>
             ) : null}
 
             <View style={styles.searchModalActions}>
-              <TouchableOpacity onPress={clearSearchFilters} style={styles.clearFiltersBtn}>
-                <Ionicons name="close-circle-outline" size={16} color={colors.danger} />
+              <TouchableOpacity
+                onPress={clearSearchFilters}
+                style={styles.clearFiltersBtn}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="close-circle-outline" size={18} color={adminTheme.primary} />
                 <Text style={styles.clearFiltersText}>Temizle</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setIsSearchModalOpen(false)}
                 style={styles.applyFiltersBtn}
+                activeOpacity={0.85}
               >
-                <Ionicons name="checkmark-circle-outline" size={16} color={colors.white} />
+                <Ionicons name="checkmark-circle-outline" size={18} color={colors.white} />
                 <Text style={styles.applyFiltersText}>Uygula</Text>
               </TouchableOpacity>
             </View>
@@ -354,7 +390,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
   },
-  filterChipActive: { backgroundColor: '#DC2626' },
+  filterChipActive: { backgroundColor: adminTheme.primary },
   filterLabel: {
     fontSize: 13,
     lineHeight: 16,
@@ -381,56 +417,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   clearFiltersBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: 2,
-    minHeight: 36,
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.dangerLight,
+    gap: 8,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: adminTheme.primaryLight,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 26, 26, 0.12)',
   },
   clearFiltersText: {
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '600',
-    color: colors.danger,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: adminTheme.primary,
     includeFontPadding: false,
   },
   resetDateBtn: {
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    minHeight: 36,
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.warningLight,
+    gap: 8,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.full,
+    backgroundColor: '#F5E8E8',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 26, 26, 0.1)',
   },
   resetDateText: {
-    fontSize: 13,
-    lineHeight: 16,
-    fontWeight: '600',
-    color: colors.warning,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    color: adminTheme.primary,
     includeFontPadding: false,
   },
   applyFiltersBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    marginTop: 2,
-    paddingVertical: 8,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
+    gap: 8,
+    minHeight: 48,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: adminTheme.primary,
   },
   applyFiltersText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.white,
   },
   list: { padding: spacing.lg, paddingBottom: 110 },
@@ -442,7 +484,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: colors.primary,
+    backgroundColor: adminTheme.primary,
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.md,
@@ -476,10 +518,10 @@ const styles = StyleSheet.create({
   },
   searchModalActions: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: spacing.md,
+    marginTop: spacing.sm,
   },
   card: {
     backgroundColor: colors.white,
@@ -491,8 +533,14 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm },
   cardName: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
   cardSub: { fontSize: 12, color: colors.textSecondary, marginTop: 1 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  statusText: { fontSize: 10, fontWeight: '700' },
+  statusBadge: {
+    maxWidth: '46%',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  statusText: { fontSize: 11, fontWeight: '700', textAlign: 'right' },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   detail: { fontSize: 13, color: colors.textSecondary },
   cancelBtn: {
@@ -503,9 +551,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     paddingVertical: 8,
     borderRadius: borderRadius.md,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: adminTheme.primaryLight,
   },
-  cancelText: { fontSize: 13, fontWeight: '600', color: '#DC2626' },
+  cancelText: { fontSize: 13, fontWeight: '600', color: adminTheme.primary },
   empty: { alignItems: 'center', marginTop: 60 },
   emptyText: { fontSize: 15, color: colors.textMuted, marginTop: spacing.md },
 });

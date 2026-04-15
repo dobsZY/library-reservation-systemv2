@@ -6,6 +6,7 @@ import {
   IsDateString,
   IsOptional,
   IsNotEmpty,
+  Min,
 } from 'class-validator';
 import { ReservationStatus } from '../../../database/entities';
 
@@ -53,6 +54,16 @@ export class CheckInDto {
   })
   @IsNumber({}, { message: 'Boylam gecerli bir sayi olmalidir.' })
   longitude: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Konum olcumunun tahmini hata payi (metre). Mobil cihaz GPS dogrulugundan gelir.',
+    example: 12.5,
+  })
+  @IsOptional()
+  @IsNumber({}, { message: 'Konum dogrulugu gecerli bir sayi olmalidir.' })
+  @Min(0, { message: 'Konum dogrulugu negatif olamaz.' })
+  accuracyMeters?: number;
 }
 
 // --- Response DTOs ---

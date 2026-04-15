@@ -180,13 +180,20 @@ export class CheckInService {
   ): Promise<CheckInResponseDto> {
     const maxDistance = hall.allowedRadiusMeters
       ?? this.configService.get<number>('app.locationMaxDistanceMeters', 50);
+    const accuracyToleranceCap = this.configService.get<number>(
+      'app.locationAccuracyToleranceCapMeters',
+      25,
+    );
+    const reportedAccuracy = Math.max(checkInDto.accuracyMeters ?? 0, 0);
+    const dynamicTolerance = Math.min(reportedAccuracy, accuracyToleranceCap);
+    const effectiveMaxDistance = maxDistance + dynamicTolerance;
 
     const { isWithin, distanceMeters } = isWithinRadius(
       checkInDto.latitude,
       checkInDto.longitude,
       Number(hall.centerLatitude),
       Number(hall.centerLongitude),
-      maxDistance,
+      effectiveMaxDistance,
     );
 
     // Konum bilgilerini her durumda kaydet (basarisiz denemeler icin de)
@@ -200,12 +207,14 @@ export class CheckInService {
 
       this.logger.warn(
         `Check-in konum reddi: user=${reservation.userId}, ` +
-        `reservation=${reservation.id}, mesafe=${distanceMeters}m, max=${maxDistance}m`,
+        `reservation=${reservation.id}, mesafe=${distanceMeters}m, max=${maxDistance}m, ` +
+        `accuracy=${reportedAccuracy}m, tolerans=${dynamicTolerance}m`,
       );
 
       throw new BadRequestException(
         `${CHECK_IN_ERRORS.LOCATION_TOO_FAR} ` +
-        `Mesafeniz: ${Math.round(distanceMeters)}m, izin verilen: ${maxDistance}m.`,
+        `Mesafeniz: ${Math.round(distanceMeters)}m, ` +
+        `izin verilen: ${Math.round(effectiveMaxDistance)}m.`,
       );
     }
 

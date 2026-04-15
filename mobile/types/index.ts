@@ -58,6 +58,8 @@ export interface Reservation {
   endTime: string;
   status: ReservationStatus;
   checkedInAt?: string;
+  /** Uzatma reddedildi; rezervasyon planlanan endTime'da tamamlanır (iptal değil) */
+  extensionDeclinedAt?: string;
   cancelledAt?: string;
   cancelledReason?: string;
   qrDeadline?: string;
@@ -77,6 +79,13 @@ export interface CheckInDto {
   qrCode: string;
   latitude: number;
   longitude: number;
+  accuracyMeters?: number;
+}
+
+export interface ValidateQrResponse {
+  isValid: boolean;
+  table?: Table;
+  message?: string;
 }
 
 export interface UserReservationStatus {
@@ -85,6 +94,8 @@ export interface UserReservationStatus {
   activeReservation?: Reservation | null;
   reason?: string;
   canExtend?: boolean;
+  /** Ayni masada sonraki saatte baska rezervasyon var; uzatma yapilamaz */
+  extensionBlockedByNextReservation?: boolean;
   extensionsRemaining?: number;
   todayReservationCount?: number;
   operatingHours?: {

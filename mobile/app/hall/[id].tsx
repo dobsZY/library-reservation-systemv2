@@ -29,6 +29,81 @@ const SHEET_CLOSE_ICON_SIZE = Math.round(Math.min(26, Math.max(20, SCREEN_WIDTH 
 // margin: spacing.lg (sol+sağ) + padding: spacing.md (sol+sağ)
 // Harita genişliğini bunları düşerek hesaplayınca telefon ekranına taşma azalır.
 const DEFAULT_MAP_WIDTH = SCREEN_WIDTH - (spacing.lg * 2 + spacing.md * 2);
+type LayoutPoint = { x: number; y: number; w: number; h: number; r?: number };
+
+function buildAHallLayoutPoints(count: number): LayoutPoint[] {
+  const pts: LayoutPoint[] = [];
+  const addGrid = (
+    sx: number,
+    sy: number,
+    rows: number,
+    cols: number,
+    gx: number,
+    gy: number,
+    w: number,
+    h: number,
+  ) => {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        pts.push({ x: sx + c * gx, y: sy + r * gy, w, h });
+      }
+    }
+  };
+
+  const addDiagonalBand = (
+    sx: number,
+    sy: number,
+    rows: number,
+    cols: number,
+    stepX: number,
+    stepY: number,
+    w: number,
+    h: number,
+    r = 45,
+  ) => {
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        pts.push({
+          x: sx + col * stepX + row * 10,
+          y: sy + col * stepY + row * 44,
+          w,
+          h,
+          r,
+        });
+      }
+    }
+  };
+
+  // Grup 1: Sol üst ana çalışma sıraları (32)
+  addGrid(90, 110, 8, 4, 48, 44, 22, 14);
+
+  // Grup 2: Üst duvar yatay sıra (8) -> toplam 40
+  addGrid(420, 86, 1, 8, 54, 0, 24, 14);
+
+  // Grup 3: Orta çapraz uzun banklar (36) -> toplam 76
+  addDiagonalBand(420, 180, 3, 12, 24, 14, 22, 14, 45);
+
+  // Grup 4: İç orta ikinci çapraz set (20) -> toplam 96
+  addDiagonalBand(330, 300, 2, 10, 24, 14, 22, 14, 45);
+
+  // Grup 5: Sağ alt duvar ikili dikey masalar (8) -> toplam 104
+  addGrid(1120, 500, 4, 2, 40, 42, 18, 16);
+
+  // Koruyucu fallback (normalde çalışmaz)
+  let i = 0;
+  while (pts.length < count) {
+    pts.push({
+      x: 120 + (i % 10) * 34,
+      y: 720 + Math.floor(i / 10) * 24,
+      w: 16,
+      h: 12,
+      r: 0,
+    });
+    i++;
+  }
+
+  return pts.slice(0, count);
+}
 
 function localCalendarYmd(): string {
   const d = new Date();
@@ -68,6 +143,41 @@ export default function HallDetailScreen() {
     () => selectedTableSlots.some((slot) => slot.isAvailable),
     [selectedTableSlots],
   );
+
+  /** Kroki rengi için: dakikada bir "şu an" dilimini güncelle */
+  const [mapColorTick, setMapColorTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMapColorTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  /**
+   * Kırmızı: (1) o gün için dönen tüm rezervasyon slotları dolu, veya
+   * (2) şu an bulunulan saat aralığında o masada rezervasyon/kilit var.
+   * Slot yoksa (ör. gün sonu) kroki için dolu kabul edilir.
+   */
+  const tableMapShowRed = useMemo(() => {
+    void mapColorTick;
+    const now = Date.now();
+    const map = new Map<string, boolean>();
+    if (!slotsData?.tables?.length) return map;
+    for (const row of slotsData.tables) {
+      const slots = row.slots;
+      if (!slots.length) {
+        map.set(row.tableId, true);
+        continue;
+      }
+      const allSlotsTaken = slots.every((s) => !s.isAvailable);
+      const bookedInCurrentInterval = slots.some((s) => {
+        if (s.isAvailable) return false;
+        const startMs = new Date(s.startTime).getTime();
+        const endMs = new Date(s.endTime).getTime();
+        return now >= startMs && now < endMs;
+      });
+      map.set(row.tableId, allSlotsTaken || bookedInCurrentInterval);
+    }
+    return map;
+  }, [slotsData, mapColorTick]);
 
   const fetchHallData = useCallback(async () => {
     if (!hallId) return;
@@ -199,17 +309,32 @@ export default function HallDetailScreen() {
   };
 
   const getTableColor = (item: TableAvailabilityItem, isSelected: boolean) => {
-    if (!item.isAvailable) return colors.danger;
+    const hasSlotDerived = tableMapShowRed.has(item.table.id);
+    const showRed = hasSlotDerived ? tableMapShowRed.get(item.table.id) === true : !item.isAvailable;
+    if (showRed) return colors.danger;
     if (isSelected) return colors.primary;
     return colors.success;
   };
 
   const layoutWidth = hall?.layoutWidth || 800;
   const layoutHeight = hall?.layoutHeight || 600;
+  const isAHall = (hall?.name || '').toLocaleLowerCase('tr-TR').includes('a salonu');
   const scaleX = mapWidth / layoutWidth;
-  const scaleY = (mapWidth * 0.75) / layoutHeight;
+  const scaleY = (mapWidth * 1.0) / layoutHeight;
   const scale = Math.min(scaleX, scaleY);
   const mapHeight = layoutHeight * scale;
+  const aHallLayoutById = useMemo(() => {
+    if (!isAHall || tableItems.length === 0) return new Map<string, LayoutPoint>();
+    const sorted = [...tableItems].sort((a, b) =>
+      a.table.tableNumber.localeCompare(b.table.tableNumber, 'tr', { numeric: true }),
+    );
+    const points = buildAHallLayoutPoints(sorted.length);
+    const map = new Map<string, LayoutPoint>();
+    sorted.forEach((item, idx) => {
+      map.set(item.table.id, points[idx]);
+    });
+    return map;
+  }, [isAHall, tableItems]);
 
   if (loading) {
     return (
@@ -300,33 +425,64 @@ export default function HallDetailScreen() {
                 <Text style={styles.entranceText}>GİRİŞ</Text>
               </View>
 
+              {isAHall && (
+                <>
+                  <View
+                    style={[
+                      styles.staffDesk,
+                      {
+                        left: 608 * scale,
+                        top: 224 * scale,
+                        width: 132 * scale,
+                        height: 56 * scale,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.staffDeskText}>Görevli</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.walkway,
+                      {
+                        left: 90 * scale,
+                        top: 220 * scale,
+                        width: 470 * scale,
+                        height: 230 * scale,
+                      },
+                    ]}
+                  />
+                </>
+              )}
+
               {tableItems.map((item) => {
                 const isSelected = selectedTableItem?.table.id === item.table.id;
-                const tableW = Math.max(item.table.width * scale, 30);
-                const tableH = Math.max(item.table.height * scale, 30);
+                const custom = isAHall ? aHallLayoutById.get(item.table.id) : undefined;
+                const tableW = Math.max((custom?.w ?? item.table.width) * scale, 10);
+                const tableH = Math.max((custom?.h ?? item.table.height) * scale, 8);
+                const tableLabel = item.table.tableNumber.replace(/[^\d]/g, '').slice(-2);
+                const canShowLabel = !isAHall && tableW >= 20 && tableH >= 18;
                 return (
                   <TouchableOpacity
                     key={item.table.id}
                     style={[
                       styles.table,
                       {
-                        left: item.table.positionX * scale,
-                        top: item.table.positionY * scale,
+                        left: (custom?.x ?? item.table.positionX) * scale,
+                        top: (custom?.y ?? item.table.positionY) * scale,
                         width: tableW,
                         height: tableH,
                         backgroundColor: getTableColor(item, isSelected),
                         borderWidth: isSelected ? 3 : 0,
                         borderColor: colors.textPrimary,
+                        transform: custom?.r ? [{ rotate: `${custom.r}deg` }] : undefined,
                       }
                     ]}
                     onPress={() => handleTablePress(item)}
                     activeOpacity={0.7}
                   >
-                    <Text style={styles.tableNumber}>
-                      {item.table.tableNumber.includes('-')
-                        ? item.table.tableNumber.split('-')[1]
-                        : item.table.tableNumber}
-                    </Text>
+                    {canShowLabel ? (
+                      <Text style={styles.tableNumber}>{tableLabel || item.table.tableNumber}</Text>
+                    ) : null}
                     {item.table.features && item.table.features.some((f: any) => 
                       f.name === 'Priz' || f.name === 'priz' || f.icon === 'flash'
                     ) && (
@@ -647,10 +803,34 @@ const styles = StyleSheet.create({
     ...shadows.md,
   },
   map: {
-    backgroundColor: '#F0F4F8',
+    backgroundColor: '#F6F7FB',
     borderRadius: borderRadius.md,
     position: 'relative',
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#D9DEE8',
+  },
+  walkway: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: '#E4D6D6',
+    backgroundColor: '#F8F5F5',
+    borderRadius: 8,
+  },
+  staffDesk: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#B0892B',
+    backgroundColor: '#FFF7E2',
+    borderRadius: 10,
+    zIndex: 1,
+  },
+  staffDeskText: {
+    color: '#7A5A14',
+    fontSize: 10,
+    fontWeight: '700',
   },
   entrance: {
     position: 'absolute',
@@ -674,13 +854,13 @@ const styles = StyleSheet.create({
   },
   table: {
     position: 'absolute',
-    borderRadius: 8,
+    borderRadius: 5,
     justifyContent: 'center',
     alignItems: 'center',
   },
   tableNumber: {
     color: colors.white,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
   },
   tableFeature: {

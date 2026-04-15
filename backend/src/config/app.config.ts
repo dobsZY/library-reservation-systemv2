@@ -14,6 +14,10 @@ export default registerAs('app', () => ({
   
   // Konum
   locationMaxDistanceMeters: parseInt(process.env.LOCATION_MAX_DISTANCE_METERS || '50', 10),
+  locationAccuracyToleranceCapMeters: parseInt(
+    process.env.LOCATION_ACCURACY_TOLERANCE_CAP_METERS || '25',
+    10,
+  ),
   
   // Rezervasyon Kuralları
   reservationMaxHours: parseInt(process.env.RESERVATION_MAX_HOURS || '3', 10),

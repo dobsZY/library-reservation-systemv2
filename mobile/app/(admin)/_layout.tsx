@@ -1,32 +1,68 @@
+import { useMemo } from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, StyleSheet } from 'react-native';
-import { colors } from '../../constants/theme';
+import { adminTheme, colors } from '../../constants/theme';
+import { BackofficeCapabilitiesProvider } from '../../context/BackofficeCapabilitiesContext';
+
+const TAB_ICON_BOX = 40;
+
+function AdminTabBarIcon({
+  name,
+  nameOutline,
+  focused,
+  inactiveColor,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  nameOutline: keyof typeof Ionicons.glyphMap;
+  focused: boolean;
+  inactiveColor: string;
+}) {
+  const iconName = focused ? name : nameOutline;
+  const iconColor = focused ? adminTheme.primary : inactiveColor;
+
+  return (
+    <View style={[styles.iconWrap, focused && styles.iconWrapActive]}>
+      <Ionicons name={iconName} size={24} color={iconColor} />
+    </View>
+  );
+}
 
 export default function AdminTabLayout() {
+  const caps = useMemo(
+    () => ({
+      variant: 'admin' as const,
+      allowCancelReservation: true,
+      allowTableEdit: true,
+    }),
+    [],
+  );
+
   return (
+    <BackofficeCapabilitiesProvider value={caps}>
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#DC2626',
+        tabBarActiveTintColor: adminTheme.primary,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopWidth: 0,
-          height: 70,
-          paddingBottom: 10,
-          paddingTop: 10,
+          height: 72,
+          paddingBottom: 8,
+          paddingTop: 6,
           ...styles.tabBarShadow,
         },
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
-          marginTop: 4,
+          marginTop: 2,
         },
         tabBarItemStyle: {
-          paddingVertical: 4,
+          paddingVertical: 2,
+          minWidth: 0,
         },
         headerStyle: {
-          backgroundColor: '#DC2626',
+          backgroundColor: adminTheme.headerBackground,
           elevation: 0,
           shadowOpacity: 0,
         },
@@ -44,21 +80,43 @@ export default function AdminTabLayout() {
           title: 'Panel',
           headerTitle: 'Yönetici Paneli',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="stats-chart"
+              nameOutline="stats-chart-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="reservations"
         options={{
-          title: 'Rezervasyonlar',
+          title: 'Rezervasyon',
           headerTitle: 'Rezervasyon Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'calendar' : 'calendar-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="calendar"
+              nameOutline="calendar-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="qr-desk"
+        options={{
+          title: 'QR Tara',
+          headerTitle: 'Masa QR',
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => (
+            <AdminTabBarIcon
+              name="qr-code"
+              nameOutline="qr-code-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
@@ -68,9 +126,12 @@ export default function AdminTabLayout() {
           title: 'Salonlar',
           headerTitle: 'Salon & Masa Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'grid' : 'grid-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="grid"
+              nameOutline="grid-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
@@ -80,13 +141,17 @@ export default function AdminTabLayout() {
           title: 'Kullanıcılar',
           headerTitle: 'Kullanıcı Yönetimi',
           tabBarIcon: ({ color, focused }) => (
-            <View style={focused ? styles.activeTab : null}>
-              <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
-            </View>
+            <AdminTabBarIcon
+              name="people"
+              nameOutline="people-outline"
+              focused={focused}
+              inactiveColor={color}
+            />
           ),
         }}
       />
     </Tabs>
+    </BackofficeCapabilitiesProvider>
   );
 }
 
@@ -98,9 +163,15 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  activeTab: {
-    backgroundColor: '#FEE2E2',
-    padding: 8,
+  iconWrap: {
+    width: TAB_ICON_BOX,
+    height: TAB_ICON_BOX,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 12,
+    overflow: 'visible',
+  },
+  iconWrapActive: {
+    backgroundColor: adminTheme.primaryLight,
   },
 });

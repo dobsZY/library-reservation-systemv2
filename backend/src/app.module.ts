@@ -30,6 +30,7 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { DeskModule } from './modules/desk/desk.module';
 
 @Module({
   imports: [
@@ -81,6 +82,7 @@ import { AdminModule } from './modules/admin/admin.module';
     StatisticsModule,
     SchedulesModule,
     AdminModule,
+    DeskModule,
   ],
 })
 export class AppModule {}
