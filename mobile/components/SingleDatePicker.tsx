@@ -59,13 +59,14 @@ type Props = {
   value: string;
   onChange: (ymd: string) => void;
   placeholder?: string;
+  minDate?: string;
   /** Admin ekranlarında bordo vurgu */
   accent?: 'student' | 'admin';
 };
 
 export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
   function SingleDatePicker(
-    { label, value, onChange, placeholder = 'Tarih Seçiniz', accent = 'student' },
+    { label, value, onChange, placeholder = 'Tarih Seçiniz', minDate, accent = 'student' },
     ref,
   ) {
     const isAdmin = accent === 'admin';
@@ -148,8 +149,9 @@ export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
       setViewY((y) => y + delta);
     };
 
-    const selectDay = (y: number, m: number, d: number) => {
-      onChange(formatYmd(y, m, d));
+    const selectDay = (ymd: string) => {
+      if (minDate && ymd < minDate) return;
+      onChange(ymd);
       setOpen(false);
     };
 
@@ -225,24 +227,28 @@ export const SingleDatePicker = forwardRef<SingleDatePickerHandle, Props>(
                     {row.days.map((cell, di) => {
                       const ymd = formatYmd(cell.y, cell.m, cell.d);
                       const selected = value === ymd;
+                      const isDisabled = !!minDate && ymd < minDate;
                       return (
                         <TouchableOpacity
                           key={`${ri}-${di}`}
                           style={styles.dayCell}
-                          onPress={() => selectDay(cell.y, cell.m, cell.d)}
+                          onPress={() => selectDay(ymd)}
                           activeOpacity={0.7}
+                          disabled={isDisabled}
                         >
                           <View
                             style={[
                               styles.dayInner,
                               selected &&
                                 (isAdmin ? styles.daySelectedAdmin : styles.daySelectedStudent),
+                              isDisabled && styles.dayDisabled,
                             ]}
                           >
                             <Text
                               style={[
                                 styles.dayText,
                                 !cell.inMonth && styles.dayMuted,
+                                isDisabled && styles.dayTextDisabled,
                                 selected &&
                                   (isAdmin
                                     ? styles.dayTextSelectedAdmin
@@ -403,5 +409,12 @@ const styles = StyleSheet.create({
   dayTextSelectedAdmin: {
     color: colors.white,
     fontWeight: '700',
+  },
+  dayDisabled: {
+    opacity: 0.35,
+  },
+  dayTextDisabled: {
+    color: '#B6BDC9',
+    fontWeight: '500',
   },
 });

@@ -59,6 +59,40 @@ export interface AdminOverview {
   occupancyRate: number;
 }
 
+export interface AdminSpecialPeriodRules {
+  allowAdvanceBooking?: boolean;
+  maxAdvanceDays?: number;
+}
+
+export interface AdminSpecialPeriod {
+  id: string;
+  name: string;
+  scheduleType: string;
+  periodKind: 'special' | 'standard';
+  startDate: string;
+  endDate: string;
+  is24h: boolean;
+  openingTime: string;
+  closingTime: string;
+  priority: number;
+  rules?: AdminSpecialPeriodRules;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type CreateSpecialPeriodPayload = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  is24h?: boolean;
+  openingTime?: string;
+  closingTime?: string;
+  priority?: number;
+  rules?: AdminSpecialPeriodRules;
+};
+
+export type UpdateSpecialPeriodPayload = Partial<CreateSpecialPeriodPayload>;
+
 export type AdminUserRole = 'student' | 'staff' | 'admin';
 
 export const adminApi = {
@@ -82,4 +116,15 @@ export const adminApi = {
     apiClient.patch<AdminTable>(`/admin/tables/${tableId}`, body),
 
   getOverview: () => apiClient.get<AdminOverview>('/admin/statistics/overview'),
+
+  getSpecialPeriods: () =>
+    apiClient.get<AdminSpecialPeriod[]>('/admin/special-periods'),
+  createSpecialPeriod: (payload: CreateSpecialPeriodPayload) =>
+    apiClient.post<AdminSpecialPeriod>('/admin/special-periods', payload),
+  updateSpecialPeriod: (id: string, payload: UpdateSpecialPeriodPayload) =>
+    apiClient.patch<AdminSpecialPeriod>(`/admin/special-periods/${id}`, payload),
+  toggleSpecialPeriodStatus: (id: string, isActive: boolean) =>
+    apiClient.patch<AdminSpecialPeriod>(`/admin/special-periods/${id}/status`, { isActive }),
+  deleteSpecialPeriod: (id: string) =>
+    apiClient.delete<{ message: string }>(`/admin/special-periods/${id}`),
 };

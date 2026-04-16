@@ -149,6 +149,12 @@ export interface HallSlotsResponse {
   hallName: string;
   date: string;
   operatingHours: { opening: string; closing: string; is24h: boolean };
+  datePolicy?: {
+    periodKind: 'standard' | 'special';
+    allowAdvanceBooking: boolean;
+    maxAdvanceDays: number;
+    scheduleName: string;
+  };
   tables: TableSlotsData[];
 }
 

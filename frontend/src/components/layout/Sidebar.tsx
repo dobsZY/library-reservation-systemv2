@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Library, LayoutGrid, CalendarDays, User, Shield, Users, BookOpen, BarChart3 } from 'lucide-react';
+import { Library, LayoutGrid, CalendarDays, User, Shield, Users, BookOpen, BarChart3, CalendarClock } from 'lucide-react';
 import { useAuthStore } from '../../stores/useAuthStore';
 
 const studentLinks = [
@@ -13,6 +13,7 @@ const adminLinks = [
   { to: '/admin', label: 'Panel', icon: BarChart3 },
   { to: '/admin/users', label: 'Kullanıcılar', icon: Users },
   { to: '/admin/reservations', label: 'Rezervasyonlar', icon: BookOpen },
+  { to: '/admin/special-periods', label: 'Özel Dönemler', icon: CalendarClock },
 ];
 
 export default function Sidebar() {

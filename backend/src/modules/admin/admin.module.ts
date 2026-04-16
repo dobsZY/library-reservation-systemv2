@@ -11,6 +11,7 @@ import {
   Table,
   TableFeature,
   TableLock,
+  OperatingSchedule,
 } from '../../database/entities';
 
 @Module({
@@ -23,6 +24,7 @@ import {
       Table,
       TableFeature,
       TableLock,
+      OperatingSchedule,
     ]),
   ],
   controllers: [AdminController],

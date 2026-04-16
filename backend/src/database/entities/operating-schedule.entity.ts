@@ -12,6 +12,16 @@ export enum ScheduleType {
   HOLIDAY = 'holiday',
 }
 
+export enum SchedulePeriodKind {
+  STANDARD = 'standard',
+  SPECIAL = 'special',
+}
+
+export type ScheduleRules = {
+  allowAdvanceBooking?: boolean;
+  maxAdvanceDays?: number;
+};
+
 @Entity('operating_schedules')
 export class OperatingSchedule {
   @PrimaryGeneratedColumn('uuid')
@@ -27,6 +37,14 @@ export class OperatingSchedule {
     default: ScheduleType.NORMAL,
   })
   scheduleType: ScheduleType;
+
+  @Column({
+    name: 'period_kind',
+    type: 'enum',
+    enum: SchedulePeriodKind,
+    default: SchedulePeriodKind.STANDARD,
+  })
+  periodKind: SchedulePeriodKind;
 
   @Column({ name: 'start_date', type: 'date' })
   startDate: Date;
@@ -49,6 +67,12 @@ export class OperatingSchedule {
 
   @Column({ name: 'chain_qr_timeout_minutes', default: 15 })
   chainQrTimeoutMinutes: number;
+
+  @Column({ type: 'integer', default: 0 })
+  priority: number;
+
+  @Column({ type: 'jsonb', nullable: true, default: () => "'{}'" })
+  rules: ScheduleRules;
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
