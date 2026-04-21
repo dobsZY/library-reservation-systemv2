@@ -22,4 +22,4 @@ COPY --from=build --chown=nestjs:nodejs /app/dist ./dist
 
 USER nestjs
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+CMD ["sh", "-c", "node dist/database/seeds/seed.js || echo '[seed] atlandi/hatali, uygulama baslatiliyor'; exec node dist/main.js"]

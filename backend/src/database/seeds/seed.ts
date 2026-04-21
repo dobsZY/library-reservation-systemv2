@@ -1,3 +1,4 @@
+import '../../env.defaults';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../../app.module';
 import { DataSource } from 'typeorm';
