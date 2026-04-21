@@ -6,12 +6,13 @@ import {
   IsOptional,
   IsEnum,
   IsNumber,
+  IsObject,
   Matches,
   MaxLength,
   Min,
   Max,
 } from 'class-validator';
-import { ScheduleType } from '../../../database/entities';
+import { ScheduleType, SchedulePeriodKind } from '../../../database/entities';
 
 export class CreateScheduleDto {
   @ApiProperty({ example: 'Final Haftası 2025' })
@@ -22,6 +23,11 @@ export class CreateScheduleDto {
   @ApiProperty({ enum: ScheduleType, example: ScheduleType.EXAM_FINAL })
   @IsEnum(ScheduleType)
   scheduleType: ScheduleType;
+
+  @ApiPropertyOptional({ enum: SchedulePeriodKind, example: SchedulePeriodKind.SPECIAL })
+  @IsOptional()
+  @IsEnum(SchedulePeriodKind)
+  periodKind?: SchedulePeriodKind;
 
   @ApiProperty({ example: '2025-01-13', description: 'Başlangıç tarihi' })
   @IsDateString()
@@ -65,6 +71,22 @@ export class CreateScheduleDto {
   @Min(5)
   @Max(60)
   chainQrTimeoutMinutes?: number;
+
+  @ApiPropertyOptional({ example: 100, description: 'Çakışan dönemlerde öncelik' })
+  @IsNumber()
+  @IsOptional()
+  priority?: number;
+
+  @ApiPropertyOptional({
+    description: 'Döneme özel rezervasyon kural override alanı',
+    example: { allowAdvanceBooking: true, maxAdvanceDays: 1 },
+  })
+  @IsOptional()
+  @IsObject()
+  rules?: {
+    allowAdvanceBooking?: boolean;
+    maxAdvanceDays?: number;
+  };
 }
 
 export class UpdateScheduleDto extends PartialType(CreateScheduleDto) {}

@@ -155,6 +155,15 @@ export default function AdminHomeScreen() {
           iconBg: PURPLE_QR_BG,
           target: 'qr-desk',
         },
+        {
+          key: 'special-periods',
+          title: 'Özel Takvim',
+          value: '',
+          icon: 'calendar-clear-outline',
+          accent: '#7C3AED',
+          iconBg: '#F3E8FF',
+          href: '/(admin)/special-periods',
+        },
       ]
     : [];
 

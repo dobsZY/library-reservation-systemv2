@@ -13,6 +13,7 @@ import ProfilePage from './pages/ProfilePage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsersPage from './pages/admin/AdminUsersPage';
 import AdminReservationsPage from './pages/admin/AdminReservationsPage';
+import AdminSpecialPeriodsPage from './pages/admin/AdminSpecialPeriodsPage';
 
 function ProtectedRoute({ children, adminOnly = false }: { children: React.ReactNode; adminOnly?: boolean }) {
   const token = getToken();
@@ -47,6 +48,7 @@ export default function App() {
         <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
         <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsersPage /></ProtectedRoute>} />
         <Route path="/admin/reservations" element={<ProtectedRoute adminOnly><AdminReservationsPage /></ProtectedRoute>} />
+        <Route path="/admin/special-periods" element={<ProtectedRoute adminOnly><AdminSpecialPeriodsPage /></ProtectedRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -215,3 +215,24 @@ export interface AdminOverview {
   cancelledReservations: number;
   occupancyRate: number;
 }
+
+export interface AdminSpecialPeriodRules {
+  allowAdvanceBooking?: boolean;
+  maxAdvanceDays?: number;
+}
+
+export interface AdminSpecialPeriod {
+  id: string;
+  name: string;
+  scheduleType: string;
+  periodKind: 'special' | 'standard';
+  startDate: string;
+  endDate: string;
+  is24h: boolean;
+  openingTime: string;
+  closingTime: string;
+  priority: number;
+  rules?: AdminSpecialPeriodRules;
+  isActive: boolean;
+  createdAt: string;
+}

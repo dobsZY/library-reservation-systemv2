@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, LessThanOrEqual, MoreThanOrEqual, Not } from 'typeorm';
 import {
   User,
   UserRole,
@@ -17,7 +17,15 @@ import {
   TableFeature,
   TableLock,
   LockStatus,
+  OperatingSchedule,
+  ScheduleType,
+  SchedulePeriodKind,
 } from '../../database/entities';
+import {
+  CreateSpecialPeriodDto,
+  ToggleSpecialPeriodDto,
+  UpdateSpecialPeriodDto,
+} from './dto/manage-special-period.dto';
 
 @Injectable()
 export class AdminService {
@@ -36,6 +44,8 @@ export class AdminService {
     private readonly featureRepository: Repository<TableFeature>,
     @InjectRepository(TableLock)
     private readonly tableLockRepository: Repository<TableLock>,
+    @InjectRepository(OperatingSchedule)
+    private readonly scheduleRepository: Repository<OperatingSchedule>,
   ) {}
 
   // ── Users ──────────────────────────────────────────────────
@@ -347,5 +357,141 @@ export class AdminService {
       cancelledReservations,
       occupancyRate,
     };
+  }
+
+  // ── Special Periods (Admin Managed) ────────────────────────
+
+  async getSpecialPeriods(): Promise<OperatingSchedule[]> {
+    return this.scheduleRepository.find({
+      where: { periodKind: SchedulePeriodKind.SPECIAL },
+      order: {
+        isActive: 'DESC',
+        startDate: 'DESC',
+        priority: 'DESC',
+      },
+    });
+  }
+
+  async createSpecialPeriod(dto: CreateSpecialPeriodDto): Promise<OperatingSchedule> {
+    this.validateDateRange(dto.startDate, dto.endDate);
+    await this.ensureNoActivePeriodOverlap(dto.startDate, dto.endDate);
+
+    const schedule = this.scheduleRepository.create({
+      name: dto.name,
+      scheduleType: ScheduleType.EXAM_FINAL,
+      periodKind: SchedulePeriodKind.SPECIAL,
+      startDate: new Date(dto.startDate),
+      endDate: new Date(dto.endDate),
+      is24h: dto.is24h ?? true,
+      openingTime: dto.openingTime ?? '00:00',
+      closingTime: dto.closingTime ?? '23:59',
+      maxDurationHours: 3,
+      chainQrTimeoutMinutes: 15,
+      priority: dto.priority ?? 100,
+      rules: {
+        allowAdvanceBooking: dto.rules?.allowAdvanceBooking ?? true,
+        maxAdvanceDays: dto.rules?.maxAdvanceDays ?? 1,
+      },
+      isActive: true,
+    });
+
+    return this.scheduleRepository.save(schedule);
+  }
+
+  async updateSpecialPeriod(id: string, dto: UpdateSpecialPeriodDto): Promise<OperatingSchedule> {
+    const schedule = await this.scheduleRepository.findOne({
+      where: { id, periodKind: SchedulePeriodKind.SPECIAL },
+    });
+    if (!schedule) {
+      throw new NotFoundException('Ozel donem bulunamadi.');
+    }
+
+    const nextStartDate = dto.startDate ?? schedule.startDate.toISOString().slice(0, 10);
+    const nextEndDate = dto.endDate ?? schedule.endDate.toISOString().slice(0, 10);
+    this.validateDateRange(nextStartDate, nextEndDate);
+    await this.ensureNoActivePeriodOverlap(nextStartDate, nextEndDate, id);
+
+    Object.assign(schedule, {
+      ...(dto.name !== undefined ? { name: dto.name } : {}),
+      ...(dto.startDate !== undefined ? { startDate: new Date(dto.startDate) } : {}),
+      ...(dto.endDate !== undefined ? { endDate: new Date(dto.endDate) } : {}),
+      ...(dto.is24h !== undefined ? { is24h: dto.is24h } : {}),
+      ...(dto.openingTime !== undefined ? { openingTime: dto.openingTime } : {}),
+      ...(dto.closingTime !== undefined ? { closingTime: dto.closingTime } : {}),
+      ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+      ...(dto.rules !== undefined
+        ? {
+            rules: {
+              ...schedule.rules,
+              ...dto.rules,
+            },
+          }
+        : {}),
+    });
+
+    return this.scheduleRepository.save(schedule);
+  }
+
+  async toggleSpecialPeriod(id: string, dto: ToggleSpecialPeriodDto): Promise<OperatingSchedule> {
+    const schedule = await this.scheduleRepository.findOne({
+      where: { id, periodKind: SchedulePeriodKind.SPECIAL },
+    });
+    if (!schedule) {
+      throw new NotFoundException('Ozel donem bulunamadi.');
+    }
+
+    schedule.isActive = dto.isActive;
+    return this.scheduleRepository.save(schedule);
+  }
+
+  async deleteSpecialPeriod(id: string): Promise<{ message: string }> {
+    const schedule = await this.scheduleRepository.findOne({
+      where: { id, periodKind: SchedulePeriodKind.SPECIAL },
+    });
+    if (!schedule) {
+      throw new NotFoundException('Ozel donem bulunamadi.');
+    }
+
+    await this.scheduleRepository.remove(schedule);
+    return { message: 'Ozel donem silindi.' };
+  }
+
+  private validateDateRange(startDate: string, endDate: string): void {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      throw new BadRequestException('Gecersiz tarih degeri.');
+    }
+    if (start > end) {
+      throw new BadRequestException('Baslangic tarihi bitis tarihinden buyuk olamaz.');
+    }
+  }
+
+  private async ensureNoActivePeriodOverlap(
+    startDate: string,
+    endDate: string,
+    excludeId?: string,
+  ): Promise<void> {
+    const where: any = {
+      isActive: true,
+      periodKind: SchedulePeriodKind.SPECIAL,
+      startDate: LessThanOrEqual(new Date(endDate)),
+      endDate: MoreThanOrEqual(new Date(startDate)),
+    };
+    if (excludeId) {
+      where.id = Not(excludeId);
+    }
+
+    const overlaps = await this.scheduleRepository.find({
+      where,
+      select: ['id'],
+    });
+
+    const hasOverlap = overlaps.some((item) => item.id !== excludeId);
+    if (hasOverlap) {
+      throw new BadRequestException(
+        'Bu tarih araliginda aktif baska bir ozel donem bulunuyor. Once mevcut donemi pasife alin.',
+      );
+    }
   }
 }

@@ -24,6 +24,7 @@ import {
   LockStatus,
   Hall,
   ReservationLogEvent,
+  SchedulePeriodKind,
 } from '../../database/entities';
 import { SchedulesService } from '../schedules/schedules.service';
 import { ReservationEventService } from './reservation-event.service';
@@ -37,6 +38,7 @@ const QR_TIMEOUT_MINUTES = 30;
 const EXTENSION_WINDOW_MINUTES = 15;
 const LATE_RESERVATION_GRACE_MINUTES = 30;
 const MAX_POTENTIAL_HOURS = 3;
+const DEFAULT_SPECIAL_MAX_ADVANCE_DAYS = 1;
 
 @Injectable()
 export class ReservationsService {
@@ -63,8 +65,8 @@ export class ReservationsService {
     const startTime = new Date(dto.startTime);
     const now = new Date();
 
-    // 1. Tarih kontrolu: yalnizca bugun ve gecmis degil
-    this.validateSameDayWithGrace(startTime, now);
+    // 1. Tarih kontrolu: standart donemde yalnizca bugun, ozel donemde kurala gore esnetilebilir
+    await this.validateReservationDatePolicy(startTime, now);
 
     // 2. Calisma saatleri kontrolu (startTime gecmis olamaz kontrolu de burada)
     await this.validateOperatingHours(startTime, INITIAL_DURATION_HOURS);
@@ -442,11 +444,10 @@ export class ReservationsService {
   // ──────────────────────────────────────────────────────────────
   // Validasyonlar (private)
   // ──────────────────────────────────────────────────────────────
-  private validateSameDayWithGrace(startTime: Date, now: Date): void {
-    
+  private async validateReservationDatePolicy(startTime: Date, now: Date): Promise<void> {
     // Local timezone'da bugunun baslangici (00:00:00)
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+
     // Local timezone'da startTime'un gunu
     const startDay = new Date(
       startTime.getFullYear(),
@@ -454,10 +455,26 @@ export class ReservationsService {
       startTime.getDate(),
     );
 
-    if (startDay.getTime() !== today.getTime()) {
-      throw new BadRequestException(
-        'Rezervasyonlar yalnizca bugun icin yapilabilir. Ileri tarihli rezervasyon desteklenmemektedir.',
+    const isSameDay = startDay.getTime() === today.getTime();
+    if (!isSameDay) {
+      const policy = await this.schedulesService.getReservationDatePolicyForDate(startDay);
+      const allowAdvanceBooking =
+        policy.periodKind === SchedulePeriodKind.SPECIAL &&
+        (policy.rules?.allowAdvanceBooking ?? true);
+      const maxAdvanceDays = Math.max(
+        1,
+        Number(policy.rules?.maxAdvanceDays ?? DEFAULT_SPECIAL_MAX_ADVANCE_DAYS),
       );
+
+      const dayDiff = Math.floor(
+        (startDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000),
+      );
+
+      if (!allowAdvanceBooking || dayDiff < 0 || dayDiff > maxAdvanceDays) {
+        throw new BadRequestException(
+          'Rezervasyonlar yalnizca bugun icin yapilabilir. Ileri tarihli rezervasyon desteklenmemektedir.',
+        );
+      }
     }
 
     // Gecmis kontrolu:

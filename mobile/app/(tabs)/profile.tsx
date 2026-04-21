@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   InteractionManager,
+  Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, borderRadius, spacing, shadows } from '../../constants/theme';
@@ -160,6 +162,24 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = () => {
+    if (Platform.OS === 'ios') {
+      Alert.alert(
+        'Çıkış Yap',
+        'Hesabınızdan çıkmak istediğinize emin misiniz?',
+        [
+          { text: 'Hayır', style: 'cancel' },
+          {
+            text: 'Evet, Çıkış Yap',
+            style: 'destructive',
+            onPress: () => {
+              void performLogout();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     showAppDialog(
       'Çıkış Yap',
       'Hesabınızdan çıkmak istediğinize emin misiniz?',

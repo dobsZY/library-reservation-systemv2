@@ -110,6 +110,19 @@ function localCalendarYmd(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function addDaysToYmd(ymd: string, days: number): string {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const base = new Date(year, month - 1, day, 12, 0, 0, 0);
+  base.setDate(base.getDate() + days);
+  return `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`;
+}
+
+function formatYmdForDisplay(ymd: string): string {
+  const [year, month, day] = ymd.split('-').map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return date.toLocaleDateString('tr-TR');
+}
+
 export default function HallDetailScreen() {
   const { id: routeId } = useLocalSearchParams<{ id: string | string[] }>();
   const hallId = Array.isArray(routeId) ? routeId[0] ?? '' : routeId ?? '';
@@ -126,6 +139,9 @@ export default function HallDetailScreen() {
   const [selectedSlot, setSelectedSlot] = useState<TableSlotItem | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapWidth, setMapWidth] = useState<number>(Math.max(1, DEFAULT_MAP_WIDTH));
+  const todayYmd = useMemo(() => localCalendarYmd(), []);
+  const [selectedDateYmd, setSelectedDateYmd] = useState<string>(todayYmd);
+  const [canShowTomorrowButton, setCanShowTomorrowButton] = useState(false);
 
   const selectedTableRef = useRef<TableAvailabilityItem | null>(null);
   const selectedSlotRef = useRef<TableSlotItem | null>(null);
@@ -133,6 +149,12 @@ export default function HallDetailScreen() {
     selectedTableRef.current = selectedTableItem;
     selectedSlotRef.current = selectedSlot;
   }, [selectedTableItem, selectedSlot]);
+
+  useEffect(() => {
+    if (!canShowTomorrowButton && selectedDateYmd !== todayYmd) {
+      setSelectedDateYmd(todayYmd);
+    }
+  }, [canShowTomorrowButton, selectedDateYmd, todayYmd]);
 
   const selectedTableSlots = useMemo(() => {
     if (!selectedTableItem || !slotsData) return [];
@@ -152,9 +174,9 @@ export default function HallDetailScreen() {
   }, []);
 
   /**
-   * Kırmızı: (1) o gün için dönen tüm rezervasyon slotları dolu, veya
-   * (2) şu an bulunulan saat aralığında o masada rezervasyon/kilit var.
-   * Slot yoksa (ör. gün sonu) kroki için dolu kabul edilir.
+   * Kırmızı: yalnızca şu an bulunulan saat aralığında masada
+   * gerçek bir rezervasyon/kilit çakışması varsa.
+   * (Süre penceresi kapanan geçmiş slotlar tek başına masayı kırmızıya düşürmez.)
    */
   const tableMapShowRed = useMemo(() => {
     void mapColorTick;
@@ -163,30 +185,47 @@ export default function HallDetailScreen() {
     if (!slotsData?.tables?.length) return map;
     for (const row of slotsData.tables) {
       const slots = row.slots;
-      if (!slots.length) {
-        map.set(row.tableId, true);
-        continue;
-      }
-      const allSlotsTaken = slots.every((s) => !s.isAvailable);
       const bookedInCurrentInterval = slots.some((s) => {
-        if (s.isAvailable) return false;
+        // blockedUntil varsa bu slotun gerçekten rezervasyon/kilit nedeniyle bloklandığını anlarız.
+        if (s.isAvailable || !s.blockedUntil) return false;
         const startMs = new Date(s.startTime).getTime();
         const endMs = new Date(s.endTime).getTime();
         return now >= startMs && now < endMs;
       });
-      map.set(row.tableId, allSlotsTaken || bookedInCurrentInterval);
+      map.set(row.tableId, bookedInCurrentInterval);
     }
     return map;
   }, [slotsData, mapColorTick]);
 
   const fetchHallData = useCallback(async () => {
     if (!hallId) return;
-    const fallbackYmd = localCalendarYmd();
+    const requestedYmd = selectedDateYmd || todayYmd;
     try {
       setError(null);
       // Önce slotları al; sunucunun kullandığı `date` ile müsaitlik iste (takvim uyumu)
-      const slots = await hallsApi.getSlots(hallId, fallbackYmd).catch(() => null);
-      const dateForAvailability = slots?.date ?? fallbackYmd;
+      const slots = await hallsApi.getSlots(hallId, requestedYmd).catch(() => null);
+      if (requestedYmd === todayYmd && slots) {
+        const canShowTomorrow =
+          slots.datePolicy?.periodKind === 'special' &&
+          !!slots.datePolicy?.allowAdvanceBooking &&
+          (slots.datePolicy?.maxAdvanceDays ?? 1) >= 1;
+        setCanShowTomorrowButton(canShowTomorrow);
+      }
+      const isFutureDateRequest = requestedYmd !== todayYmd;
+      if (isFutureDateRequest && slots) {
+        const canBookFutureDate =
+          slots.datePolicy?.periodKind === 'special' && !!slots.datePolicy?.allowAdvanceBooking;
+        if (!canBookFutureDate) {
+          showAppDialog(
+            'Bilgi',
+            'Ileri tarih rezervasyonu sadece admin tarafindan tanimlanan ozel donemlerde aciktir.',
+          );
+          setSelectedDateYmd(todayYmd);
+          return;
+        }
+      }
+
+      const dateForAvailability = slots?.date ?? requestedYmd;
       const availabilityData = await hallsApi.getAvailability(hallId, dateForAvailability);
       setHall(availabilityData.hall);
       setTableItems(availabilityData.tables);
@@ -206,7 +245,7 @@ export default function HallDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [hallId]);
+  }, [hallId, selectedDateYmd, todayYmd]);
 
   useEffect(() => {
     fetchHallData();
@@ -310,7 +349,8 @@ export default function HallDetailScreen() {
 
   const getTableColor = (item: TableAvailabilityItem, isSelected: boolean) => {
     const hasSlotDerived = tableMapShowRed.has(item.table.id);
-    const showRed = hasSlotDerived ? tableMapShowRed.get(item.table.id) === true : !item.isAvailable;
+    const slotDerivedRed = hasSlotDerived ? tableMapShowRed.get(item.table.id) === true : false;
+    const showRed = !item.isAvailable || slotDerivedRed;
     if (showRed) return colors.danger;
     if (isSelected) return colors.primary;
     return colors.success;
@@ -390,6 +430,45 @@ export default function HallDetailScreen() {
                 <Text style={styles.occupancyLabel}>Doluluk</Text>
               </View>
             )}
+          </View>
+          <View style={styles.dateSelectorRow}>
+            <TouchableOpacity
+              style={[
+                styles.dateChip,
+                selectedDateYmd === todayYmd && styles.dateChipActive,
+              ]}
+              onPress={() => setSelectedDateYmd(todayYmd)}
+              activeOpacity={0.85}
+            >
+              <Text
+                style={[
+                  styles.dateChipText,
+                  selectedDateYmd === todayYmd && styles.dateChipTextActive,
+                ]}
+              >
+                Bugün
+              </Text>
+            </TouchableOpacity>
+            {canShowTomorrowButton && (
+              <TouchableOpacity
+                style={[
+                  styles.dateChip,
+                  selectedDateYmd === addDaysToYmd(todayYmd, 1) && styles.dateChipActive,
+                ]}
+                onPress={() => setSelectedDateYmd(addDaysToYmd(todayYmd, 1))}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={[
+                    styles.dateChipText,
+                    selectedDateYmd === addDaysToYmd(todayYmd, 1) && styles.dateChipTextActive,
+                  ]}
+                >
+                  Yarın
+                </Text>
+              </TouchableOpacity>
+            )}
+            <Text style={styles.dateSelectedText}>{formatYmdForDisplay(selectedDateYmd)}</Text>
           </View>
         </View>
 
@@ -581,7 +660,9 @@ export default function HallDetailScreen() {
           {/* Saat Slotları (backend'den) */}
           {selectedTableSlots.length > 0 ? (
             <View style={styles.slotsContainer}>
-              <Text style={styles.slotsTitle}>Uygun Saatler (Bugün)</Text>
+              <Text style={styles.slotsTitle}>
+                Saat Aralıkları ({formatYmdForDisplay(selectedDateYmd)})
+              </Text>
               <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
@@ -752,6 +833,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  dateSelectorRow: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  dateChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateChipActive: {
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
+  },
+  dateChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  dateChipTextActive: {
+    color: colors.primary,
+  },
+  dateSelectedText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginLeft: spacing.xs,
   },
   occupancyBadge: {
     alignItems: 'center',
