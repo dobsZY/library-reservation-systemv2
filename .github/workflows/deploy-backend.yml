@@ -57,7 +57,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
-          script: mkdir -p ${{ env.DEPLOY_PATH }}
+          script: mkdir -p "$HOME/${{ env.DEPLOY_DIR }}"
 
       - name: Upload compose to server
         uses: appleboy/scp-action@v0.1.7
@@ -67,7 +67,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
           source: deploy/server-compose.yml
-          target: ${{ env.DEPLOY_PATH }}/
+          target: ${{ env.DEPLOY_DIR }}/
           strip_components: 1
 
       - name: Pull and restart
@@ -79,7 +79,7 @@ jobs:
           port: ${{ secrets.SSH_PORT != '' && secrets.SSH_PORT || 22 }}
           script: |
             set -e
-            cd ${{ env.DEPLOY_PATH }}
+            cd "$HOME/${{ env.DEPLOY_DIR }}"
             mv -f server-compose.yml docker-compose.yml
             echo "${{ secrets.GHCR_PULL_TOKEN }}" | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
             docker compose pull
