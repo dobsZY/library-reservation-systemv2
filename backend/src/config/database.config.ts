@@ -8,7 +8,9 @@ export default registerAs('database', () => ({
   password: process.env.DB_PASSWORD || 'library_pass_2025',
   database: process.env.DB_DATABASE || 'library_reservation',
   autoLoadEntities: true,
-  synchronize: process.env.NODE_ENV === 'development', // Production'da false olmalı
-  logging: process.env.NODE_ENV === 'development',
+  synchronize:
+    process.env.DB_SYNCHRONIZE === 'true' || process.env.NODE_ENV === 'development',
+  logging:
+    process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development',
 }));
 

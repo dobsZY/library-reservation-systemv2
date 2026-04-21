@@ -13,6 +13,9 @@ export const config = {
   DB_USERNAME: 'fashup',
   DB_PASSWORD: 'SuperGucluBirSifre123!',
   DB_DATABASE: 'kütüphane',
+  // Ilk deploy'da 'true' yap -> tablolar olusur; sonra 'false' cekip redeploy et.
+  DB_SYNCHRONIZE: 'true',
+  DB_LOGGING: 'false',
 
   REDIS_HOST: 'redis',
   REDIS_PORT: '6379',
