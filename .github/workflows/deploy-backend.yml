@@ -12,7 +12,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_REPO: ghcr.io/dobszy/kutuphane-api
-  DEPLOY_PATH: /opt/kutuphane
+  DEPLOY_DIR: kutuphane
 
 jobs:
   build-and-push:
