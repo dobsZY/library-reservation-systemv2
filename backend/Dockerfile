@@ -12,14 +12,14 @@ RUN pnpm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
-RUN corepack enable
 ENV NODE_ENV=production
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --prod --frozen-lockfile
-COPY --from=build /app/dist ./dist
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
 
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --prod --frozen-lockfile
+COPY --from=build --chown=nestjs:nodejs /app/dist ./dist
+
+USER nestjs
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
-
-

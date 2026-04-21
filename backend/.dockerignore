@@ -2,5 +2,11 @@ node_modules
 dist
 .git
 .env
+.env.*
 npm-debug.log
 pnpm-debug.log
+coverage
+.eslintcache
+*.md
+test
+.vscode

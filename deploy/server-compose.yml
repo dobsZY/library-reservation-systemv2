@@ -1,0 +1,58 @@
+# Sunucuda Actions ile /opt/kutuphane/docker-compose.yml olarak yazılır.
+# Tüm uygulama env'leri buraya gömülüdür; repoda/sunucuda ayrı .env dosyası yok.
+services:
+  kutuphane-api:
+    image: ghcr.io/dobszy/kutuphane-api:latest
+    container_name: kutuphane-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      API_PREFIX: api/v1
+
+      # Postgres (harici container: postgres, network: traefik-public)
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: fashup
+      DB_PASSWORD: SuperGucluBirSifre123!
+      DB_DATABASE: "kütüphane"
+
+      # Redis (harici container: redis, network: traefik-public)
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+
+      # Güvenlik
+      JWT_SECRET: selcuk-university-library-jwt-prod-2026-xK8vNq3mZ7
+      JWT_EXPIRES_IN: 7d
+      QR_SECRET: selcuk-library-qr-prod-2026-pR9wLm4nBv
+
+      # CORS
+      CORS_ORIGINS: https://kutuphane.aatakan.info
+
+      # Swagger
+      SWAGGER_ENABLED: "false"
+
+      # Konum
+      LOCATION_MAX_DISTANCE_METERS: "50"
+      LOCATION_ACCURACY_TOLERANCE_CAP_METERS: "25"
+
+      # Rezervasyon
+      RESERVATION_MAX_HOURS: "3"
+      RESERVATION_MIN_HOURS: "1"
+      QR_TIMEOUT_MINUTES: "30"
+      QR_WARNING_MINUTES: "25"
+      CHAIN_QR_TIMEOUT_MINUTES: "15"
+      LOCK_RELEASE_DELAY_MINUTES: "5"
+    networks:
+      - traefik-public
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kutuphane-api.rule=Host(`kutuphane.aatakan.info`)
+      - traefik.http.routers.kutuphane-api.entrypoints=websecure
+      - traefik.http.routers.kutuphane-api.tls=true
+      - traefik.http.routers.kutuphane-api.tls.certresolver=letsencrypt
+      - traefik.http.services.kutuphane-api.loadbalancer.server.port=3000
+
+networks:
+  traefik-public:
+    external: true

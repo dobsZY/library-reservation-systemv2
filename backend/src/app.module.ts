@@ -37,6 +37,7 @@ import { DeskModule } from './modules/desk/desk.module';
     // Konfigürasyon
     ConfigModule.forRoot({
       isGlobal: true,
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
       load: [appConfig, databaseConfig, redisConfig],
       envFilePath: ['.env', '.env.development', '.env.local'],
     }),
