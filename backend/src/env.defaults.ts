@@ -25,7 +25,7 @@ export const config = {
   QR_SECRET: 'selcuk-library-qr-prod-2026-pR9wLm4nBv',
 
   CORS_ORIGINS: 'https://kutuphane.aatakan.info',
-  SWAGGER_ENABLED: 'false',
+  SWAGGER_ENABLED: 'true',
 
   LOCATION_MAX_DISTANCE_METERS: '50',
   LOCATION_ACCURACY_TOLERANCE_CAP_METERS: '25',
