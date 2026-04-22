@@ -7,7 +7,7 @@ export const config = {
   NODE_ENV: 'production',
   PORT: '3000',
   API_PREFIX: 'api/v1',
-
+  DENEME: 'asdasd',
   DB_HOST: 'postgres',
   DB_PORT: '5432',
   DB_USERNAME: 'fashup',
