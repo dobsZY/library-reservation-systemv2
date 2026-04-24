@@ -247,6 +247,14 @@ REDIS_HOST=localhost
 REDIS_PORT=6380
 ```
 
+Sunucu / Docker ağındaki üretim PostgreSQL (örnek) için tam URL: `backend/src/env.defaults.ts` ve `docker-compose.yml` bu değerlerle hizalanmıştır:
+
+```env
+DATABASE_URL=postgresql://kutuphane:kutuphane123@postgres:5432/kütüphane
+```
+
+Ayrı ayrı alan: `DB_HOST=postgres`, `DB_PORT=5432`, `DB_USERNAME=kutuphane`, `DB_PASSWORD=...`, `DB_DATABASE=kütüphane` (veya yalnızca `DATABASE_URL`).
+
 ### 7. Sorun Giderme
 
 - `docker compose up -d` sırasında `open //./pipe/dockerDesktopLinuxEngine` hatası alırsan Docker Desktop kapalıdır; uygulamayı açıp tekrar dene.

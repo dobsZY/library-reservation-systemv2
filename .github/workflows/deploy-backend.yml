@@ -1,4 +1,5 @@
 name: Deploy backend (GHCR + SSH)
+# DB credentials: not in GitHub Actions; use image env (env.defaults) or server compose env
 
 on:
   push:

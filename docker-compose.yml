@@ -7,15 +7,15 @@
 #    image: postgres:16-alpine
 #    restart: unless-stopped
 #    environment:
-#      POSTGRES_USER: library_user
-#      POSTGRES_PASSWORD: library_pass_2025
-#      POSTGRES_DB: library_reservation
+#      POSTGRES_USER: kutuphane
+#      POSTGRES_PASSWORD: kutuphane123
+#      POSTGRES_DB: "kütüphane"
 #    ports:
 #      - "5433:5432"
 #    volumes:
 #      - postgres_data:/var/lib/postgresql/data
 #    healthcheck:
-#      test: ["CMD-SHELL", "pg_isready -U library_user -d library_reservation"]
+#      test: ['CMD-SHELL', 'pg_isready -U kutuphane -d "kütüphane"']
 #      interval: 10s
 #      timeout: 5s
 #      retries: 5
@@ -71,9 +71,10 @@ services:
       NODE_ENV: development
       DB_HOST: ${DB_HOST:-postgres}
       DB_PORT: ${DB_PORT:-5432}
-      DB_USERNAME: ${DB_USERNAME:-library_user}
-      DB_PASSWORD: ${DB_PASSWORD:-library_pass_2025}
-      DB_DATABASE: ${DB_DATABASE:-library_reservation}
+      DB_USERNAME: ${DB_USERNAME:-kutuphane}
+      DB_PASSWORD: ${DB_PASSWORD:-kutuphane123}
+      DB_DATABASE: ${DB_DATABASE:-kütüphane}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://kutuphane:kutuphane123@postgres:5432/kütüphane}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
     ports:

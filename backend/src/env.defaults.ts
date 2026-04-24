@@ -7,12 +7,13 @@ export const config = {
   NODE_ENV: 'production',
   PORT: '3000',
   API_PREFIX: 'api/v1',
-  DENEME: 'asdasd',
   DB_HOST: 'postgres',
   DB_PORT: '5432',
-  DB_USERNAME: 'fashup',
-  DB_PASSWORD: 'SuperGucluBirSifre123!',
+  DB_USERNAME: 'kutuphane',
+  DB_PASSWORD: 'kutuphane123',
   DB_DATABASE: 'kütüphane',
+  /** Tam URL set edildiginde TypeORM buna gore baglanir (docker agi: servis adi `postgres`) */
+  DATABASE_URL: 'postgresql://kutuphane:kutuphane123@postgres:5432/kütüphane',
   // Ilk deploy'da 'true' yap -> tablolar olusur; sonra 'false' cekip redeploy et.
   DB_SYNCHRONIZE: 'true',
   DB_LOGGING: 'false',

@@ -1,5 +1,5 @@
 # Sunucuda Actions ile /root/kutuphane/docker-compose.yml (veya $HOME/kutuphane/docker-compose.yml) olarak yazilir.
-# Tum uygulama degerleri backend/src/env.defaults.ts icinde; burada env yok.
+# Uygulama env'i image icindeki env.defaults (DATABASE_URL, DB_*) veya guncellemede buraya eklenecek environment ile.
 services:
   kutuphane-api:
     image: ghcr.io/dobszy/kutuphane-api:latest

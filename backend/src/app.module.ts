@@ -46,14 +46,8 @@ import { DeskModule } from './modules/desk/desk.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get('database.host'),
-        port: configService.get('database.port'),
-        username: configService.get('database.username'),
-        password: configService.get('database.password'),
-        database: configService.get('database.database'),
-        entities: [
+      useFactory: (configService: ConfigService) => {
+        const entities = [
           Hall,
           Table,
           TableFeature,
@@ -65,10 +59,26 @@ import { DeskModule } from './modules/desk/desk.module';
           UserPreference,
           User,
           UserSession,
-        ],
-        synchronize: configService.get('database.synchronize'),
-        logging: configService.get('database.logging'),
-      }),
+        ];
+        const base = {
+          type: 'postgres' as const,
+          entities,
+          synchronize: configService.get('database.synchronize'),
+          logging: configService.get('database.logging'),
+        };
+        const url = configService.get<string | undefined>('database.url');
+        if (url) {
+          return { ...base, url };
+        }
+        return {
+          ...base,
+          host: configService.get<string>('database.host', 'localhost'),
+          port: configService.get<number>('database.port', 5432),
+          username: configService.get<string>('database.username', ''),
+          password: configService.get<string>('database.password', ''),
+          database: configService.get<string>('database.database', ''),
+        };
+      },
     }),
 
     // Zamanlayıcı (Cron jobs)
