@@ -14,8 +14,8 @@ export const config = {
   DB_DATABASE: 'kütüphane',
   /** Tam URL set edildiginde TypeORM buna gore baglanir (docker agi: servis adi `postgres`) */
   DATABASE_URL: 'postgresql://kutuphane:kutuphane123@postgres:5432/kütüphane',
-  // Ilk deploy'da 'true' yap -> tablolar olusur; sonra 'false' cekip redeploy et.
-  DB_SYNCHRONIZE: 'true',
+  // Uretimde daima false: synchronize semayi otomatik degistirmeye calisir, risklidir. Semayi migration ile yonet.
+  DB_SYNCHRONIZE: 'false',
   DB_LOGGING: 'false',
 
   REDIS_HOST: 'redis',
