@@ -211,16 +211,24 @@ export default function AdminSpecialPeriodsScreen() {
 
         <View style={styles.actionsRow}>
           <TouchableOpacity
-            style={styles.toggleBtn}
+            style={[
+              styles.toggleBtn,
+              item.isActive ? styles.toggleBtnDeactivate : styles.toggleBtnActivate,
+            ]}
             onPress={() => togglePeriod(item)}
             activeOpacity={0.85}
           >
             <Ionicons
               name={item.isActive ? 'pause-circle-outline' : 'checkmark-circle-outline'}
               size={16}
-              color={adminTheme.primary}
+              color={item.isActive ? adminTheme.primary : colors.successDark}
             />
-            <Text style={styles.toggleBtnText}>
+            <Text
+              style={[
+                styles.toggleBtnText,
+                item.isActive ? styles.toggleBtnTextDeactivate : styles.toggleBtnTextActivate,
+              ]}
+            >
               {item.isActive ? 'Pasife Al' : 'Aktif Et'}
             </Text>
           </TouchableOpacity>
@@ -425,16 +433,26 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 36,
     borderRadius: borderRadius.md,
-    backgroundColor: adminTheme.primaryLight,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
   },
+  toggleBtnDeactivate: {
+    backgroundColor: adminTheme.primaryLight,
+  },
+  toggleBtnActivate: {
+    backgroundColor: colors.successLight,
+  },
   toggleBtnText: {
-    color: adminTheme.primary,
     fontSize: 13,
     fontWeight: '700',
+  },
+  toggleBtnTextDeactivate: {
+    color: adminTheme.primary,
+  },
+  toggleBtnTextActivate: {
+    color: colors.successDark,
   },
   actionsRow: {
     marginTop: spacing.md,

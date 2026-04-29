@@ -157,9 +157,15 @@ export default function AdminUsersScreen() {
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim();
-    if (!q) return users;
-    return users.filter((u) => userMatchesSearch(u, q));
-  }, [users, searchQuery]);
+    const list = q ? users.filter((u) => userMatchesSearch(u, q)) : [...users];
+
+    if (!currentUserId) return list;
+    return list.sort((a, b) => {
+      if (a.id === currentUserId && b.id !== currentUserId) return -1;
+      if (b.id === currentUserId && a.id !== currentUserId) return 1;
+      return 0;
+    });
+  }, [users, searchQuery, currentUserId]);
 
   const currentUserIsSuperAdmin = useMemo(() => {
     if (!currentUserId) return false;
@@ -168,8 +174,8 @@ export default function AdminUsersScreen() {
   }, [users, currentUserId]);
 
   const userSections = useMemo(() => {
-    const known = new Set(USER_ROLE_SECTIONS.map((s) => s.role));
-    const base = USER_ROLE_SECTIONS.map(({ role, title }) => ({
+    const known = new Set<string>(USER_ROLE_SECTIONS.map((s) => s.role));
+    const base: Array<{ title: string; data: AdminUser[] }> = USER_ROLE_SECTIONS.map(({ role, title }) => ({
       title,
       data: filteredUsers.filter((u) => u.role.toLowerCase() === role),
     })).filter((s) => s.data.length > 0);

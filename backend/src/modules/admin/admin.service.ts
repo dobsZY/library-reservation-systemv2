@@ -59,8 +59,42 @@ export class AdminService {
     return !!user.isSuperAdmin || user.studentNumber === 'admin001';
   }
 
-  async getUsers(): Promise<any[]> {
-    const users = await this.userRepository.find({ order: { createdAt: 'DESC' } });
+  async getUsers(query?: {
+    role?: string;
+    search?: string;
+    page?: string;
+    limit?: string;
+  }): Promise<{
+    items: any[];
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  }> {
+    const roleRaw = query?.role?.trim().toLowerCase();
+    const role = roleRaw as UserRole | undefined;
+    const allowedRoles = new Set<string>(Object.values(UserRole));
+    if (roleRaw && !allowedRoles.has(roleRaw)) {
+      throw new BadRequestException('Gecersiz role degeri.');
+    }
+
+    const page = Math.max(1, Number.parseInt(query?.page ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(query?.limit ?? '20', 10) || 20));
+    const search = query?.search?.trim();
+
+    const qb = this.userRepository.createQueryBuilder('u');
+    if (role) {
+      qb.andWhere('u.role = :role', { role });
+    }
+    if (search) {
+      qb.andWhere('(u.full_name ILIKE :search OR u.student_number ILIKE :search)', {
+        search: `%${search}%`,
+      });
+    }
+    qb.orderBy('u.created_at', 'DESC');
+    qb.skip((page - 1) * limit).take(limit);
+
+    const [users, total] = await qb.getManyAndCount();
     const activeSessions = await this.sessionRepository
       .createQueryBuilder('s')
       .select('s.user_id', 'userId')
@@ -68,7 +102,7 @@ export class AdminService {
       .getRawMany();
     const activeUserIds = new Set(activeSessions.map((s) => s.userId));
 
-    return users.map((u) => ({
+    const items = users.map((u) => ({
       id: u.id,
       studentNumber: u.studentNumber,
       fullName: u.fullName,
@@ -78,6 +112,14 @@ export class AdminService {
       hasActiveSession: activeUserIds.has(u.id),
       createdAt: u.createdAt,
     }));
+
+    return {
+      items,
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
+    };
   }
 
   async forceLogout(userId: string, actorUserId: string): Promise<void> {
@@ -159,8 +201,36 @@ export class AdminService {
 
   // ── Reservations ───────────────────────────────────────────
 
-  async getReservations(statusFilter?: string): Promise<Reservation[]> {
-    const where: any = {};
+  async getReservations(query?: {
+    status?: string;
+    studentQuery?: string;
+    searchStudentNumber?: string;
+    nameQuery?: string;
+    searchFullName?: string;
+    dateYmd?: string;
+    date?: string;
+    page?: string;
+    limit?: string;
+  }): Promise<{
+    items: Reservation[];
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  }> {
+    const statusFilter = query?.status?.trim().toLowerCase();
+    const studentNumberQuery = (query?.studentQuery ?? query?.searchStudentNumber ?? '').trim();
+    const fullNameQuery = (query?.nameQuery ?? query?.searchFullName ?? '').trim();
+    const dateFilter = (query?.dateYmd ?? query?.date ?? '').trim();
+    const page = Math.max(1, Number.parseInt(query?.page ?? '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(query?.limit ?? '20', 10) || 20));
+
+    const qb = this.reservationRepository
+      .createQueryBuilder('r')
+      .leftJoinAndSelect('r.table', 'table')
+      .leftJoinAndSelect('r.hall', 'hall')
+      .leftJoinAndSelect('r.user', 'user');
+
     if (statusFilter) {
       const mapped: Record<string, ReservationStatus[]> = {
         active: [ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN],
@@ -169,15 +239,45 @@ export class AdminService {
         no_show: [ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED],
         expired: [ReservationStatus.NO_SHOW, ReservationStatus.EXPIRED],
       };
-      const statuses = mapped[statusFilter];
-      if (statuses) where.status = In(statuses);
+      const statuses =
+        mapped[statusFilter] ||
+        (Object.values(ReservationStatus).includes(statusFilter as ReservationStatus)
+          ? [statusFilter as ReservationStatus]
+          : undefined);
+      if (statuses) {
+        qb.andWhere('r.status IN (:...statuses)', { statuses });
+      }
     }
-    return this.reservationRepository.find({
-      where,
-      relations: ['table', 'hall', 'user'],
-      order: { createdAt: 'DESC' },
-      take: 200,
-    });
+
+    if (studentNumberQuery) {
+      qb.andWhere('user.student_number ILIKE :studentNumberQuery', {
+        studentNumberQuery: `%${studentNumberQuery}%`,
+      });
+    }
+
+    if (fullNameQuery) {
+      qb.andWhere('user.full_name ILIKE :fullNameQuery', {
+        fullNameQuery: `%${fullNameQuery}%`,
+      });
+    }
+
+    if (dateFilter) {
+      qb.andWhere("to_char(r.reservation_date, 'YYYY-MM-DD') = :dateFilter", {
+        dateFilter,
+      });
+    }
+
+    qb.orderBy('r.created_at', 'DESC');
+    qb.skip((page - 1) * limit).take(limit);
+
+    const [items, total] = await qb.getManyAndCount();
+    return {
+      items,
+      page,
+      limit,
+      total,
+      hasMore: page * limit < total,
+    };
   }
 
   async adminCancelReservation(reservationId: string): Promise<Reservation> {

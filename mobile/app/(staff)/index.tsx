@@ -23,11 +23,22 @@ type DashboardCard = {
   key: string;
   title: string;
   value: number | string;
+  subtitle?: string;
   icon: keyof typeof Ionicons.glyphMap;
   accent: string;
   iconBg: string;
+  largeIcon?: boolean;
+  hideValue?: boolean;
   href?: string;
   target?: 'masa-kontrol' | 'qr-desk';
+};
+
+type StaffCalendarItem = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
 };
 
 const STAFF_MASA_KONTROL = '/(staff)/masa-kontrol';
@@ -36,13 +47,36 @@ const PURPLE_QR_BG = '#EDE9FE';
 
 export default function StaffHomeScreen() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [specialCalendars, setSpecialCalendars] = useState<StaffCalendarItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const formatDate = useCallback(
+    (iso: string) =>
+      new Date(iso).toLocaleDateString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      }),
+    [],
+  );
+
   const fetchData = useCallback(async () => {
     try {
-      const data = await adminApi.getOverview();
-      setOverview(data);
+      const [overviewData, calendarData] = await Promise.all([
+        adminApi.getOverview(),
+        adminApi.getSpecialPeriods(),
+      ]);
+      setOverview(overviewData);
+      setSpecialCalendars(
+        calendarData.map((item) => ({
+          id: item.id,
+          name: item.name,
+          startDate: item.startDate,
+          endDate: item.endDate,
+          isActive: item.isActive,
+        })),
+      );
     } catch (e: any) {
       if (handleApiError(e)) return;
       showAppDialog('Hata', e?.message || 'İstatistikler yüklenemedi.');
@@ -141,10 +175,27 @@ export default function StaffHomeScreen() {
           key: 'qr-desk',
           title: 'Masa QR tara',
           value: '',
+          hideValue: true,
+          largeIcon: true,
           icon: 'qr-code',
           accent: PURPLE_QR,
           iconBg: PURPLE_QR_BG,
           target: 'qr-desk',
+        },
+        {
+          key: 'special-calendars',
+          title: 'Özel Takvimler',
+          value: '',
+          hideValue: true,
+          largeIcon: true,
+          subtitle: (() => {
+            const activeCalendar = specialCalendars.find((x) => x.isActive);
+            if (!activeCalendar) return 'Aktif bir takvim yok';
+            return `${formatDate(activeCalendar.startDate)} - ${formatDate(activeCalendar.endDate)}`;
+          })(),
+          icon: 'calendar-clear-outline',
+          accent: '#6366F1',
+          iconBg: '#EEF2FF',
         },
       ]
     : [];
@@ -164,22 +215,23 @@ export default function StaffHomeScreen() {
                 <View
                   style={[
                     styles.iconCircle,
-                    c.target === 'qr-desk' && styles.iconCircleQr,
+                    c.largeIcon && styles.iconCircleQr,
                     { backgroundColor: c.iconBg },
                   ]}
                 >
                   <Ionicons
                     name={c.icon}
-                    size={c.target === 'qr-desk' ? 30 : 22}
+                    size={c.largeIcon ? 30 : 22}
                     color={c.accent}
                   />
                 </View>
-                {c.target === 'qr-desk' ? (
+                {c.hideValue ? (
                   <View style={styles.cardValueSpacer} />
                 ) : (
                   <Text style={styles.cardValue}>{c.value}</Text>
                 )}
                 <Text style={styles.cardTitle}>{c.title}</Text>
+                {c.subtitle ? <Text style={styles.cardSubtitle}>{c.subtitle}</Text> : null}
               </>
             );
             if (!navigable) {
@@ -211,6 +263,7 @@ export default function StaffHomeScreen() {
             );
           })}
         </View>
+
       </ScrollView>
 
       <TouchableOpacity
@@ -290,5 +343,11 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontWeight: '500',
     lineHeight: 18,
+  },
+  cardSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
   },
 });
