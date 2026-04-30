@@ -91,7 +91,7 @@ export class AdminService {
         search: `%${search}%`,
       });
     }
-    qb.orderBy('u.created_at', 'DESC');
+    qb.orderBy('u.createdAt', 'DESC');
     qb.skip((page - 1) * limit).take(limit);
 
     const [users, total] = await qb.getManyAndCount();
@@ -267,7 +267,7 @@ export class AdminService {
       });
     }
 
-    qb.orderBy('r.created_at', 'DESC');
+    qb.orderBy('r.createdAt', 'DESC');
     qb.skip((page - 1) * limit).take(limit);
 
     const [items, total] = await qb.getManyAndCount();
