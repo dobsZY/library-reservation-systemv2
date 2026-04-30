@@ -39,8 +39,22 @@ export class AdminController {
   @Get('users')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiOperation({ summary: 'Tüm kullanıcılar (admin)' })
-  async getUsers() {
-    return this.adminService.getUsers();
+  @ApiQuery({ name: 'role', required: false, enum: UserRole, description: 'Filtrelenecek rol' })
+  @ApiQuery({ name: 'search', required: false, description: 'Ad soyad veya öğrenci no araması' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  async getUsers(
+    @Query('role') role?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getUsers({
+      role,
+      search,
+      page,
+      limit,
+    });
   }
 
   @Post('users/:id/force-logout')
@@ -73,8 +87,36 @@ export class AdminController {
   @Roles(UserRole.ADMIN, UserRole.STAFF)
   @ApiOperation({ summary: 'Tüm rezervasyonlar (yönetici / personel, salt okuma listesi)' })
   @ApiQuery({ name: 'status', required: false, description: 'active|cancelled|completed|no_show|expired' })
-  async getReservations(@Query('status') status?: string) {
-    return this.adminService.getReservations(status);
+  @ApiQuery({ name: 'studentQuery', required: false, description: 'Öğrenci numarası araması' })
+  @ApiQuery({ name: 'searchStudentNumber', required: false, description: 'Öğrenci numarası araması (alias)' })
+  @ApiQuery({ name: 'nameQuery', required: false, description: 'Ad soyad araması' })
+  @ApiQuery({ name: 'searchFullName', required: false, description: 'Ad soyad araması (alias)' })
+  @ApiQuery({ name: 'dateYmd', required: false, description: 'Rezervasyon tarihi YYYY-MM-DD' })
+  @ApiQuery({ name: 'date', required: false, description: 'Rezervasyon tarihi YYYY-MM-DD (alias)' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  async getReservations(
+    @Query('status') status?: string,
+    @Query('studentQuery') studentQuery?: string,
+    @Query('searchStudentNumber') searchStudentNumber?: string,
+    @Query('nameQuery') nameQuery?: string,
+    @Query('searchFullName') searchFullName?: string,
+    @Query('dateYmd') dateYmd?: string,
+    @Query('date') date?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.getReservations({
+      status,
+      studentQuery,
+      searchStudentNumber,
+      nameQuery,
+      searchFullName,
+      dateYmd,
+      date,
+      page,
+      limit,
+    });
   }
 
   @Delete('reservations/:id')
@@ -125,8 +167,9 @@ export class AdminController {
   // ── Special Periods ────────────────────────────────────────
 
   @Get('special-periods')
-  @UseGuards(JwtAuthGuard, AdminGuard)
-  @ApiOperation({ summary: 'Özel dönemleri listele (admin)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({ summary: 'Özel dönemleri listele (yönetici / personel)' })
   async getSpecialPeriods() {
     return this.adminService.getSpecialPeriods();
   }
