@@ -47,7 +47,7 @@ export class Hall {
   @Column({ name: 'center_longitude', type: 'decimal', precision: 11, scale: 8, nullable: true })
   centerLongitude: number;
 
-  @Column({ name: 'allowed_radius_meters', default: 50 })
+  @Column({ name: 'allowed_radius_meters', default: 300 })
   allowedRadiusMeters: number;
 
   @Column()

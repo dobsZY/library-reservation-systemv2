@@ -179,7 +179,7 @@ export class CheckInService {
     now: Date,
   ): Promise<CheckInResponseDto> {
     const maxDistance = hall.allowedRadiusMeters
-      ?? this.configService.get<number>('app.locationMaxDistanceMeters', 50);
+      ?? this.configService.get<number>('app.locationMaxDistanceMeters', 300);
     const accuracyToleranceCap = this.configService.get<number>(
       'app.locationAccuracyToleranceCapMeters',
       25,

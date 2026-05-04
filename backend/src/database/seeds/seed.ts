@@ -24,7 +24,7 @@ function getHallCenterCoordinates(hallName: string): { latitude: number; longitu
   return HALL_GROUP_COORDINATES.AD;
 }
 
-const DEFAULT_ALLOWED_RADIUS_METERS = 50;
+const DEFAULT_ALLOWED_RADIUS_METERS = 300;
 const HALL_TABLE_COUNTS: Array<{ code: string; count: number }> = [
   { code: 'A', count: 104 },
   { code: 'B', count: 112 },

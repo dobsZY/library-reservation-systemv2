@@ -28,7 +28,7 @@ export const config = {
   CORS_ORIGINS: 'https://kutuphane.aatakan.info',
   SWAGGER_ENABLED: 'true',
 
-  LOCATION_MAX_DISTANCE_METERS: '50',
+  LOCATION_MAX_DISTANCE_METERS: '300',
   LOCATION_ACCURACY_TOLERANCE_CAP_METERS: '25',
 
   RESERVATION_MAX_HOURS: '3',

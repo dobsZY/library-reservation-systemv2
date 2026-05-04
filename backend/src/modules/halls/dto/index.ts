@@ -59,7 +59,7 @@ export class CreateHallDto {
   @IsOptional()
   centerLongitude?: number;
 
-  @ApiPropertyOptional({ example: 50, description: 'İzin verilen yarıçap (metre)' })
+  @ApiPropertyOptional({ example: 300, description: 'İzin verilen yarıçap (metre)' })
   @IsNumber()
   @IsOptional()
   @Min(10)

@@ -13,7 +13,7 @@ export default registerAs('app', () => ({
   qrSecret: process.env.QR_SECRET || 'default-qr-secret',
   
   // Konum
-  locationMaxDistanceMeters: parseInt(process.env.LOCATION_MAX_DISTANCE_METERS || '50', 10),
+  locationMaxDistanceMeters: parseInt(process.env.LOCATION_MAX_DISTANCE_METERS || '300', 10),
   locationAccuracyToleranceCapMeters: parseInt(
     process.env.LOCATION_ACCURACY_TOLERANCE_CAP_METERS || '25',
     10,
