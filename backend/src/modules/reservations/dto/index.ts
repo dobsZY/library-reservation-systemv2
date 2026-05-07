@@ -163,6 +163,11 @@ export class UserReservationStatusDto {
   @ApiProperty()
   canExtend: boolean;
 
+  @ApiProperty({
+    description: 'Ayni masada sonraki saatte rezervasyon oldugu icin uzatma engeli',
+  })
+  extensionBlockedByNextReservation: boolean;
+
   @ApiProperty()
   extensionsRemaining: number;
 

@@ -368,6 +368,7 @@ export class ReservationsService {
     hasActiveReservation: boolean;
     activeReservation: Reservation | null;
     canExtend: boolean;
+    extensionBlockedByNextReservation: boolean;
     extensionsRemaining: number;
     todayReservationCount: number;
     operatingHours: { opening: string; closing: string; is24h: boolean };
@@ -391,6 +392,7 @@ export class ReservationsService {
 
     let canReserve = true;
     let canExtend = false;
+    let extensionBlockedByNextReservation = false;
     let extensionsRemaining = MAX_EXTENSION_COUNT;
     let reason: string | undefined;
 
@@ -404,11 +406,27 @@ export class ReservationsService {
         const now = new Date();
         const minutesRemaining =
           (activeReservation.endTime.getTime() - now.getTime()) / (1000 * 60);
+        const newEndTime = new Date(
+          activeReservation.endTime.getTime() +
+            EXTENSION_DURATION_HOURS * 60 * 60 * 1000,
+        );
+
+        const conflictingReservation = await this.reservationRepository.findOne({
+          where: {
+            tableId: activeReservation.tableId,
+            status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
+            id: Not(activeReservation.id),
+            startTime: LessThan(newEndTime),
+            endTime: MoreThan(activeReservation.endTime),
+          },
+        });
+        extensionBlockedByNextReservation = !!conflictingReservation;
 
         canExtend =
           minutesRemaining <= EXTENSION_WINDOW_MINUTES &&
           minutesRemaining > 0 &&
-          activeReservation.extensionCount < MAX_EXTENSION_COUNT;
+          activeReservation.extensionCount < MAX_EXTENSION_COUNT &&
+          !extensionBlockedByNextReservation;
       }
     }
 
@@ -418,6 +436,7 @@ export class ReservationsService {
       hasActiveReservation: !!activeReservation,
       activeReservation,
       canExtend,
+      extensionBlockedByNextReservation,
       extensionsRemaining,
       todayReservationCount: todayReservations.length,
       operatingHours: {
