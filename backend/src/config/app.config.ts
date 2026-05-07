@@ -42,6 +42,11 @@ export default registerAs('app', () => ({
         'http://127.0.0.1:8082',
       ],
 
+  // Timezone
+  // DB stores TIMESTAMP WITHOUT TIME ZONE values as local Turkey wall-clock time.
+  // This offset aligns new Date() (UTC) to that same "naive-UTC" frame for comparisons.
+  tzOffsetHours: parseInt(process.env.TZ_OFFSET_HOURS || '3', 10),
+
   // Swagger
   swaggerEnabled: process.env.SWAGGER_ENABLED !== 'false',
 }));
