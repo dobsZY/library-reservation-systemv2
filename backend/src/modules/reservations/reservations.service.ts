@@ -5,6 +5,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Repository,
@@ -57,6 +58,7 @@ export class ReservationsService {
     private readonly dataSource: DataSource,
     private readonly schedulesService: SchedulesService,
     private readonly eventService: ReservationEventService,
+    private readonly configService: ConfigService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────
@@ -202,7 +204,7 @@ export class ReservationsService {
       );
     }
 
-    const now = new Date();
+    const now = this.getNowInDbLocalFrame();
     const extensionAvailability = await this.getExtensionAvailability(reservation, now);
 
     if (!extensionAvailability.canExtend) {
@@ -397,7 +399,7 @@ export class ReservationsService {
       extensionsRemaining = MAX_EXTENSION_COUNT - activeReservation.extensionCount;
 
       if (activeReservation.status === ReservationStatus.CHECKED_IN) {
-        const now = new Date();
+        const now = this.getNowInDbLocalFrame();
         const extensionAvailability = await this.getExtensionAvailability(
           activeReservation,
           now,
@@ -615,5 +617,16 @@ export class ReservationsService {
       extensionBlockedByNextReservation: false,
       newEndTime,
     };
+  }
+
+  /**
+   * DB timestamp kolonlari timezone bilgisiz "yerel saat" mantigiyla kullaniliyor.
+   * Karsilastirmalari ayni referans eksenine almak icin now'u TZ offseti kadar kaydirir.
+   */
+  private getNowInDbLocalFrame(): Date {
+    const now = new Date();
+    const tzOffsetMs =
+      this.configService.get<number>('app.tzOffsetHours', 3) * 60 * 60 * 1000;
+    return new Date(now.getTime() + tzOffsetMs);
   }
 }
