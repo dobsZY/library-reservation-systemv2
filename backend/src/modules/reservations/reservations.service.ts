@@ -39,6 +39,7 @@ const EXTENSION_WINDOW_MINUTES = 15;
 const LATE_RESERVATION_GRACE_MINUTES = 30;
 const MAX_POTENTIAL_HOURS = 3;
 const DEFAULT_SPECIAL_MAX_ADVANCE_DAYS = 1;
+const MINUTE_MS = 60 * 1000;
 
 @Injectable()
 export class ReservationsService {
@@ -201,23 +202,17 @@ export class ReservationsService {
       );
     }
 
-    // Uzatma penceresi: mevcut bitis zamanindan 15 dk oncesinde olmali
     const now = new Date();
-    const minutesRemaining = (reservation.endTime.getTime() - now.getTime()) / (1000 * 60);
+    const extensionAvailability = await this.getExtensionAvailability(reservation, now);
 
-    if (minutesRemaining > EXTENSION_WINDOW_MINUTES) {
+    if (!extensionAvailability.canExtend) {
       throw new BadRequestException(
-        `Uzatma hakki bitis zamanindan ${EXTENSION_WINDOW_MINUTES} dakika once acilir.`,
+        extensionAvailability.reason ??
+          'Uzatma kosullari su an saglanmiyor.',
       );
     }
 
-    if (minutesRemaining < 0) {
-      throw new BadRequestException('Rezervasyon suresi dolmus.');
-    }
-
-    // Calisma saatleri kontrolu
-    const newEndTime = new Date(reservation.endTime.getTime() + EXTENSION_DURATION_HOURS * 60 * 60 * 1000);
-    await this.validateOperatingHoursForExtension(reservation.startTime, newEndTime);
+    const newEndTime = extensionAvailability.newEndTime;
 
     // Transaction ile cakisma kontrolu + uzatma
     await this.dataSource.transaction(async (manager: EntityManager) => {
@@ -228,7 +223,6 @@ export class ReservationsService {
         .where('table.id = :id', { id: reservation.tableId })
         .getOne();
 
-      // Uzatma araliginda baska aktif rezervasyon var mi?
       const conflictingReservation = await manager.findOne(Reservation, {
         where: {
           tableId: reservation.tableId,
@@ -404,29 +398,13 @@ export class ReservationsService {
 
       if (activeReservation.status === ReservationStatus.CHECKED_IN) {
         const now = new Date();
-        const minutesRemaining =
-          (activeReservation.endTime.getTime() - now.getTime()) / (1000 * 60);
-        const newEndTime = new Date(
-          activeReservation.endTime.getTime() +
-            EXTENSION_DURATION_HOURS * 60 * 60 * 1000,
+        const extensionAvailability = await this.getExtensionAvailability(
+          activeReservation,
+          now,
         );
-
-        const conflictingReservation = await this.reservationRepository.findOne({
-          where: {
-            tableId: activeReservation.tableId,
-            status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
-            id: Not(activeReservation.id),
-            startTime: LessThan(newEndTime),
-            endTime: MoreThan(activeReservation.endTime),
-          },
-        });
-        extensionBlockedByNextReservation = !!conflictingReservation;
-
-        canExtend =
-          minutesRemaining <= EXTENSION_WINDOW_MINUTES &&
-          minutesRemaining > 0 &&
-          activeReservation.extensionCount < MAX_EXTENSION_COUNT &&
-          !extensionBlockedByNextReservation;
+        canExtend = extensionAvailability.canExtend;
+        extensionBlockedByNextReservation =
+          extensionAvailability.extensionBlockedByNextReservation;
       }
     }
 
@@ -557,5 +535,85 @@ export class ReservationsService {
         `Uzatma calisma saatleri disina tasiyor. Kapanis: ${hours.closingTime}`,
       );
     }
+  }
+
+  private async getExtensionAvailability(
+    reservation: Reservation,
+    now: Date,
+  ): Promise<{
+    canExtend: boolean;
+    extensionBlockedByNextReservation: boolean;
+    newEndTime: Date;
+    reason?: string;
+  }> {
+    const newEndTime = new Date(
+      reservation.endTime.getTime() + EXTENSION_DURATION_HOURS * 60 * 60 * 1000,
+    );
+    const remainingMs = reservation.endTime.getTime() - now.getTime();
+    const extensionWindowMs = EXTENSION_WINDOW_MINUTES * MINUTE_MS;
+
+    if (remainingMs <= 0) {
+      return {
+        canExtend: false,
+        extensionBlockedByNextReservation: false,
+        newEndTime,
+        reason: 'Rezervasyon suresi dolmus.',
+      };
+    }
+
+    if (remainingMs > extensionWindowMs) {
+      return {
+        canExtend: false,
+        extensionBlockedByNextReservation: false,
+        newEndTime,
+        reason: `Uzatma hakki bitis zamanindan ${EXTENSION_WINDOW_MINUTES} dakika once acilir.`,
+      };
+    }
+
+    if (reservation.extensionCount >= MAX_EXTENSION_COUNT) {
+      return {
+        canExtend: false,
+        extensionBlockedByNextReservation: false,
+        newEndTime,
+        reason: `Maksimum uzatma hakkiniz (${MAX_EXTENSION_COUNT}) kullanildi.`,
+      };
+    }
+
+    try {
+      await this.validateOperatingHoursForExtension(reservation.startTime, newEndTime);
+    } catch {
+      return {
+        canExtend: false,
+        extensionBlockedByNextReservation: false,
+        newEndTime,
+        reason: 'Uzatma calisma saatleri disina tasiyor.',
+      };
+    }
+
+    const conflictingReservation = await this.reservationRepository.findOne({
+      where: {
+        tableId: reservation.tableId,
+        status: In([ReservationStatus.RESERVED, ReservationStatus.CHECKED_IN]),
+        id: Not(reservation.id),
+        startTime: LessThan(newEndTime),
+        endTime: MoreThan(reservation.endTime),
+      },
+    });
+
+    const extensionBlockedByNextReservation = !!conflictingReservation;
+    if (extensionBlockedByNextReservation) {
+      return {
+        canExtend: false,
+        extensionBlockedByNextReservation: true,
+        newEndTime,
+        reason: 'Sonraki zaman araliginda rezervasyon oldugu icin uzatma yapilamiyor.',
+      };
+    }
+
+    return {
+      canExtend: true,
+      extensionBlockedByNextReservation: false,
+      newEndTime,
+    };
   }
 }
